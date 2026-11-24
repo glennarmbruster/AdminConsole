@@ -1,0 +1,21 @@
+﻿{
+    "ButtonsPerRow": 5,
+    "Sections": [
+        {
+            "Name": "Admin Tools",
+            "Rows": 4
+        },
+        {
+            "Name": "Daily Scripts",
+            "Rows": 2
+        },
+        {
+            "Name": "Reporting",
+            "Rows": 3
+        },
+        {
+            "Name": "Connect",
+            "Rows": 1
+        }
+    ]
+}

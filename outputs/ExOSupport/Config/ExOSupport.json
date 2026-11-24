@@ -1,0 +1,22 @@
+{
+    "ActiveTenant": "ExpressPros",
+    "ResultCap": 200,
+    "Tenants": [
+        {
+            "Id": "ExpressPros",
+            "DisplayName": "ExpressPros.com",
+            "PrimaryDomain": "expresspros.com",
+            "TenantId": "",
+            "Pim": {
+                "PortalUrl": "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadmigratedroles",
+                "DurationHours": 4
+            },
+            "Scope": {
+                "Enabled": false,
+                "Attribute": "CustomAttribute10",
+                "Group": "ExOSupport-HQ@expresspros.com",
+                "Value": "HQ"
+            }
+        }
+    ]
+}

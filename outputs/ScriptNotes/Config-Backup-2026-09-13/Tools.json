@@ -1,0 +1,970 @@
+﻿[
+    {
+        "Order":  1,
+        "Name":  "Activate",
+        "Script":  ".\\activate.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Activate"
+    },
+    {
+        "Order":  2,
+        "Name":  "OnPrem",
+        "Script":  ".\\connect-exse.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Activate"
+    },
+    {
+        "Order":  3,
+        "Name":  "ExO",
+        "Script":  ".\\connect-exo.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Activate"
+    },
+    {
+        "Order":  4,
+        "Name":  "SPO",
+        "Script":  ".\\connect-spo.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Activate"
+    },
+    {
+        "Order":  5,
+        "Name":  "MSGraph",
+        "Script":  ".\\pimactivation.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Activate"
+    },
+    {
+        "Order":  6,
+        "Name":  "Dashboard",
+        "Script":  ".\\Dashboard.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  7,
+        "Name":  "Mailbox Health",
+        "Script":  ".\\MailboxHealth.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  8,
+        "Name":  "Mailbox Stats",
+        "Script":  ".\\MBX-Stats.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  9,
+        "Name":  "Unified-Lookup",
+        "Script":  ".\\unified-lookup.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  10,
+        "Name":  "Inbox Rules",
+        "Script":  ".\\InboxRules.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  11,
+        "Name":  "Out of Office",
+        "Script":  ".\\OOFEditor.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  12,
+        "Name":  "Calendar Permissions",
+        "Script":  ".\\CalendarPermissions.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  13,
+        "Name":  "Mailbox Permissions",
+        "Script":  ".\\MailboxPermissions.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  14,
+        "Name":  "Group Memberships (Single User)",
+        "Script":  ".\\DLMemberships.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  15,
+        "Name":  "Create/Delete DL \u0026 SharedMBX",
+        "Script":  ".\\ManageMailObject.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  16,
+        "Name":  "Message Trace",
+        "Script":  ".\\MessageTrace.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  17,
+        "Name":  "Header Analyzer",
+        "Script":  ".\\headeranalyzer.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  18,
+        "Name":  "Audit UserMB",
+        "Script":  ".\\audituser.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  19,
+        "Name":  "Audit SMB",
+        "Script":  ".\\auditSMB.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  20,
+        "Name":  "All Attributes",
+        "Script":  ".\\AllAttributes.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  21,
+        "Name":  "Mail Attributes (Rename)",
+        "Script":  ".\\MailAttributes.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  22,
+        "Name":  "UnifiedGroup Editor",
+        "Script":  ".\\unifiedgroup.ps1",
+        "ObjectTypes":  [
+                            "UnifiedGroup"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  23,
+        "Name":  "Cert Check",
+        "Script":  ".\\certificateexpiry.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  24,
+        "Name":  "Mailbox Permission Duplicator",
+        "Script":  ".\\mailboxpermdupe.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  25,
+        "Name":  "Blocked Senders",
+        "Script":  ".\\blockedsenders.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  26,
+        "Name":  "Console",
+        "Script":  ".\\console.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  27,
+        "Name":  "Change Mtg Oranizer",
+        "Script":  ".\\ChangeMeetingOrganizer.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  28,
+        "Name":  "User Office (Fran)",
+        "Script":  ".\\franuser_Office.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  29,
+        "Name":  "Transport Rules",
+        "Script":  ".\\TransportRules.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  30,
+        "Name":  "Set-BookingPolicy",
+        "Script":  ".\\set-bookingpolicy.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Rooms"
+    },
+    {
+        "Order":  31,
+        "Name":  "CalendarProcessing",
+        "Script":  ".\\calendarprocessing.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Rooms"
+    },
+    {
+        "Order":  32,
+        "Name":  "RoomPlace Info",
+        "Script":  ".\\roomplace.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Rooms"
+    },
+    {
+        "Order":  33,
+        "Name":  "RoomLists",
+        "Script":  ".\\roomlist.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Rooms"
+    },
+    {
+        "Order":  34,
+        "Name":  "Room Timezones",
+        "Script":  ".\\roomregional.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Rooms"
+    },
+    {
+        "Order":  35,
+        "Name":  "Resource Settigns Duplicator",
+        "Script":  "./resourceduplicator.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools",
+        "Group":  "Rooms"
+    },
+    {
+        "Order":  36,
+        "Name":  "Create Cloud Group",
+        "Script":  ".\\newcloudgroup.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  37,
+        "Name":  "Term Requests",
+        "Script":  ".\\disable-user.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  38,
+        "Name":  "New User",
+        "Script":  ".\\newuser.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  39,
+        "Name":  "Group-Bulk Management",
+        "Script":  ".\\Bulk-dlmembership.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  40,
+        "Name":  "Group-Owner Groups",
+        "Script":  ".\\manageownergroups.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  41,
+        "Name":  "Rename Office Groups",
+        "Script":  ".\\Rename-OfficeGroups.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  42,
+        "Name":  "Mailbox / Onedrive Perms",
+        "Script":  ".\\mailboxonedriveaccess.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  43,
+        "Name":  "Quick Links",
+        "Script":  ".\\quicklaunch.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  44,
+        "Name":  "Recover Deleted Items",
+        "Script":  ".\\RecoverDeletedItems.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  45,
+        "Name":  "Mobile Devices",
+        "Script":  ".\\MobileDevices.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  46,
+        "Name":  "Returning User",
+        "Script":  ".\\Notdeadyet.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  47,
+        "Name":  "Restore Mailbox",
+        "Script":  ".\\restoreMailbox.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  48,
+        "Name":  "Hold Retention",
+        "Script":  ".\\HoldRetention.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  49,
+        "Name":  "Calendar Reset",
+        "Script":  ".\\calendarreset.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  50,
+        "Name":  "Mail Contacts",
+        "Script":  ".\\mailcontacts.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  51,
+        "Name":  "Forwarding Editor",
+        "Script":  ".\\forwardingeditor.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  52,
+        "Name":  "Enable Archive",
+        "Script":  ".\\enablearchive.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  53,
+        "Name":  "Group-Manager (Cloud/Onprem)",
+        "Script":  "./Group-manager.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  54,
+        "Name":  "ServiceNow Queue",
+        "Script":  ".\\EX-ServiceNowQueue.ps1",
+        "ObjectTypes":  [
+                            "Mailbox",
+                            "UnifiedGroup",
+                            "OnpremGroup"
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  55,
+        "Name":  "DL to SharedMB",
+        "Script":  ".\\dltosharedmb.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  56,
+        "Name":  "Protocols",
+        "Script":  ".\\Protocols.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  57,
+        "Name":  "Protocol Usage",
+        "Script":  ".\\protocolusage.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  58,
+        "Name":  "Disabled/Licensed",
+        "Script":  ".\\disabledlicensed.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  59,
+        "Name":  "MB w No activity",
+        "Script":  ".\\staleaccounts.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  60,
+        "Name":  "External Forwarding",
+        "Script":  ".\\externalForwarding.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  61,
+        "Name":  "Permissions Audit",
+        "Script":  "./permissionsaudit.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  62,
+        "Name":  "Orphaned OneDrive",
+        "Script":  "./orphanedOneDrive.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  63,
+        "Name":  "External Sharing",
+        "Script":  "./externalSharing.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  64,
+        "Name":  "Ownerless Groups",
+        "Script":  "./ownerlessgroups.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  65,
+        "Name":  "Report Browser",
+        "Script":  "./reportBrowser.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  66,
+        "Name":  "M365 Reports",
+        "Script":  ".\\m365Reports.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  67,
+        "Name":  "No Remote Mailbox",
+        "Script":  ".\\missingremotemailbox.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  68,
+        "Name":  "Log Viewer",
+        "Script":  ".\\logviewer.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  69,
+        "Name":  "** NEW ** DL to SharedMBX",
+        "Script":  ".\\projects\\dltosharedmbx\\dl-sharedmbx.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Projects",
+        "Group":  "DL to SharedMBX"
+    },
+    {
+        "Order":  70,
+        "Name":  "OLD-1-Onprem-Export",
+        "Script":  ".\\Projects\\DLtoSharedMbx\\1-onprem-Export.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Projects",
+        "Group":  "DL to SharedMBX"
+    },
+    {
+        "Order":  71,
+        "Name":  "OLD-2-Onprem-Decomm",
+        "Script":  ".\\Projects\\DLtoSharedMbx\\2-onprem-decomm.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Projects",
+        "Group":  "DL to SharedMBX"
+    },
+    {
+        "Order":  72,
+        "Name":  "OLD-3-Cloud-CheckSync",
+        "Script":  ".\\Projects\\DLtoSharedMbx\\3-cloud-checksync.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Projects",
+        "Group":  "DL to SharedMBX"
+    },
+    {
+        "Order":  73,
+        "Name":  "OLD-4-Cloud-Create",
+        "Script":  ".\\Projects\\DLtoSharedMbx\\4-cloud-create.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Projects",
+        "Group":  "DL to SharedMBX"
+    },
+    {
+        "Order":  74,
+        "Name":  "5-NewCityStateDL (OnPrem)",
+        "Script":  ".\\Projects\\DLtoSharedMbx\\5-newcitystatedl.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Projects",
+        "Group":  "DL to SharedMBX"
+    },
+    {
+        "Order":  75,
+        "Name":  "Edit DL-Input.csv",
+        "Script":  ".\\Express\\DLtoSharedMbx\\dl-input.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Projects",
+        "Group":  "DL to SharedMBX"
+    },
+    {
+        "Order":  76,
+        "Name":  "DL Inventory - All",
+        "Script":  ".\\projects\\dlmigration\\inventory-AllGroups.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Projects",
+        "Group":  "DL Migration"
+    },
+    {
+        "Order":  77,
+        "Name":  "Quarantine Manager",
+        "Script":  ".\\QuarantineManager.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Daily Scripts"
+    },
+    {
+        "Order":  78,
+        "Name":  "Migration Status",
+        "Script":  ".\\MigrationStatus.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  79,
+        "Name":  "Mail Flow Connectors",
+        "Script":  ".\\MailFlowConnectors.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  80,
+        "Name":  "Hybrid Attribute Check",
+        "Script":  ".\\HybridAttributeCheck.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  81,
+        "Name":  "Dynamic DL Preview",
+        "Script":  ".\\DynamicDLPreview.ps1",
+        "ObjectTypes":  [
+                            "Mailbox",
+                            "UnifiedGroup",
+                            "OnpremGroup"
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  82,
+        "Name":  "Spam Policy Viewer",
+        "Script":  ".\\SpamPolicyViewer.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  83,
+        "Name":  "Domain Mail Auth Check",
+        "Script":  ".\\DomainMailAuthCheck.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  84,
+        "Name":  "Free/Busy Viewer",
+        "Script":  ".\\FreeBusyViewer.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  85,
+        "Name":  "Automap Fix",
+        "Script":  ".\\Automap-Fix.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  86,
+        "Name":  "User-Defined Delegates",
+        "Script":  ".\\UserDefinedDelegates.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  87,
+        "Name":  "Retention Policy",
+        "Script":  ".\\Retention-Policy.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  88,
+        "Name":  "Diagnose AD Gate",
+        "Script":  ".\\Diagnose-AdGate.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  89,
+        "Name":  "Diagnose ExO Resolve",
+        "Script":  ".\\Diagnose-ExoResolve.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  90,
+        "Name":  "Exchange Health Check",
+        "Script":  ".\\Exchange-HealthCheck.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  91,
+        "Name":  "Clear IIS Logs",
+        "Script":  ".\\Clear-IISLogs.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Reporting"
+    },
+    {
+        "Order":  92,
+        "Name":  "AD Lookup",
+        "Script":  ".\\AD-Lookup.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  93,
+        "Name":  "Convert LogHistory",
+        "Script":  ".\\Convert-LogHistory.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  94,
+        "Name":  "ConvertMailboxType",
+        "Script":  ".\\ConvertMailboxType.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  95,
+        "Name":  "DLInventory",
+        "Script":  ".\\DLInventory.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  96,
+        "Name":  "ExternalSharing",
+        "Script":  ".\\ExternalSharing.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  97,
+        "Name":  "GroupEditor",
+        "Script":  ".\\GroupEditor.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  98,
+        "Name":  "Group Manager",
+        "Script":  ".\\Group-Manager.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  99,
+        "Name":  "Group Manager Editor",
+        "Script":  ".\\Group-Manager-Editor.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  100,
+        "Name":  "OrphanedOneDrive",
+        "Script":  ".\\OrphanedOneDrive.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  101,
+        "Name":  "OwnerlessGroups",
+        "Script":  ".\\OwnerlessGroups.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  102,
+        "Name":  "PermissionsAudit",
+        "Script":  ".\\PermissionsAudit.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  103,
+        "Name":  "ReportBrowser",
+        "Script":  ".\\ReportBrowser.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  104,
+        "Name":  "ResourceDuplicator",
+        "Script":  ".\\ResourceDuplicator.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    },
+    {
+        "Order":  105,
+        "Name":  "UnifiedGroupMembership",
+        "Script":  ".\\UnifiedGroupMembership.ps1",
+        "ObjectTypes":  [
+
+                        ],
+        "Section":  "Admin Tools"
+    }
+]

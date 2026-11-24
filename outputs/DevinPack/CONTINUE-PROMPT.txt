@@ -1,0 +1,171 @@
+================================================================================
+PASTE THIS INTO THE EXISTING DEVIN SESSION.
+Replace DEVIN-PACK.md in the repo first. Nothing else changes.
+================================================================================
+
+DO NOT REBUILD ANYTHING. DO NOT START OVER.
+
+The first pass is accepted. The console, Common.ps1, the verifier and the eight
+tools stay exactly as they are except where this message says otherwise.
+
+WHAT CHANGED, AND WHY
+
+DEVIN-PACK.md in the repo has been REPLACED. It now holds TEN documents instead
+of nine. The two reference-code files are UNCHANGED -- do not re-extract them,
+and reference/ stays as it is.
+
+The new document is:
+
+    DOCUMENT 8 -- 09-FULL-TOOL-CATALOGUE.md
+
+It specifies the WHOLE toolkit: 55 console buttons over 65 .ps1 files. The eight
+tools you built are the first pass. The catalogue is the other 48 scripts, in
+eight lettered stages, A to H.
+
+Several older documents also changed, because they were written when eight tools
+was the whole plan and a few of them were simply wrong. Three of those
+corrections apply to code you have ALREADY WRITTEN.
+
+--------------------------------------------------------------------------------
+STEP 1 -- REPORT BEFORE YOU CHANGE ANYTHING
+--------------------------------------------------------------------------------
+
+Read Document 8 in full, then Documents 3, 4, 5 and 6 again (02, 03, 08, 04 --
+they have all changed). Then answer these, specifically, with file and line
+references. Do not edit anything yet.
+
+  1. Does Common.ps1 contain Resolve-AdObjectType?
+
+     The old contract told you NOT to port it, describing it as dual-directory
+     machinery. THAT WAS WRONG and it has been corrected. It classifies a single
+     AD object's type from its attributes, and Unified-Lookup.ps1 -- which you
+     have built -- calls it.
+
+     Tell me which happened: you ported it anyway; you wrote your own version
+     under a different name; or Unified Lookup does not classify AD objects at
+     all. All three are recoverable, but they need different fixes.
+
+  2. What does every Write-CompletedLog / Write-FailedLog call pass as -Target?
+
+     The rule has been restated. It is now: use Get-LogTarget, which takes
+     candidates in preference order --
+
+         -Target (Get-LogTarget $mbx.PrimarySmtpAddress $mbx.Name)
+
+     -- and for tools with NO mail-enabled object at all (the connect scripts,
+     activate), a literal scope name such as 'Exchange Online' or 'Toolkit'.
+
+     List any call site that passes a display name, a fabricated address, or a
+     bare .Name. Do not fix them yet.
+
+  3. Does Group-Manager-Editor.ps1 declare, in its first 40 lines:
+
+         # TOOLKIT-REQUIRES: OwnProcess
+
+     It should. Its on-premises path uses Add-/Remove-ADPermission, and those
+     names exist in BOTH Exchange editions -- in one process the last import
+     owns them (C1/C2). This was missing from the old spec. It is the most
+     collision-exposed file in the first pass.
+
+     Also confirm the console actually honours the marker: that
+     Test-ToolDeclaresOwnProcess reads it and Start-ToolScriptInNewProcess
+     launches accordingly.
+
+  4. Did you renumber any rule in Test-Toolkit.ps1 to match 03's tables?
+
+     You should not have. The reference verifier uses its own codes and several
+     collide with 03's with different meanings -- its audit-target rule is
+     TGT001, not LOG002, and it ALREADY exempts literal -Target values, which is
+     correct. Document 4 now says this explicitly. If you renumbered, say so.
+
+  5. What are the current Rows values in Sections.json, per section, and how
+     many buttons does each section actually hold?
+
+--------------------------------------------------------------------------------
+STEP 2 -- THE RETROFIT (after I have read your answers)
+--------------------------------------------------------------------------------
+
+Once I confirm, apply these to the existing build. Nothing here is a rewrite.
+
+  a. Whatever question 1 turned up. If you forked a private copy of a Common.ps1
+     function, delete the fork and use the shared one -- FUN001 exists because
+     every drift found in practice was a fix silently reverted.
+
+  b. The Get-LogTarget convention across every audit call site.
+
+  c. The OwnProcess marker on Group-Manager-Editor.ps1.
+
+  d. Test-Toolkit.ps1 gains three things, ALL of which are needed before Stage A:
+
+       WF010  console height exceeds WorkingArea (see Document 8 section 2).
+              NOT WF004, which is already taken and asks a different question.
+       WF011  a section holds more buttons than Rows x ButtonsPerRow, counting
+              a Group as one button.
+       the LOG002 / TGT001 literal-target exemption, if it is not already there.
+
+  e. ToolManager.ps1 gains the over-capacity warning. It reports a section with
+     more buttons than slots rather than letting the console drop the overflow
+     silently.
+
+  f. Tenant.json gains two keys that Document 3's schema now carries and nothing
+     else surfaces:
+
+       SharePoint.AdminUrl        a TENANT FACT. Never Settings.json -- reading
+                                  it from there was a real bug: the value typed
+                                  into Tenant Manager was inert while Connect
+                                  SPO used a derived host that never existed.
+       FeatureRequest.Recipient   ONE key, shared by Report a Bug and Feature
+                                  Request. Do not add a second.
+
+     Tenant Manager must expose both, and must round-trip every key it does not
+     recognise -- including the _comment_* keys -- unchanged.
+
+  Then re-run the verifier and Gate 1 from Document 10, and stop.
+
+--------------------------------------------------------------------------------
+STEP 3 -- STAGE A
+--------------------------------------------------------------------------------
+
+Only after Step 2 is confirmed on Windows.
+
+Stage A is six scripts: Connect-SPO, Header Analyzer, DL Memberships, Audit
+UserMB, Audit SMB, Transport Rules. Specs in Document 8.
+
+TWO THINGS THAT MUST HAPPEN IN THE SAME COMMITS:
+
+  - Raise Admin Tools to Rows 4 in Sections.json. It currently has ten slots and
+    eight tools; Stage A adds six buttons. FOURTEEN BUTTONS IN TEN SLOTS DOES
+    NOT ERROR -- four buttons are simply absent, and nothing says so. That is
+    what WF011 is for.
+
+  - Set Capabilities.SharePointOnline to true in Tenant.json when Connect-SPO
+    lands. It ships false because nothing in the first pass used it, and an
+    unticked capability makes its tools ABSENT rather than greyed, which reads
+    as a build defect.
+
+Then stop and report, as you did for the first pass.
+
+--------------------------------------------------------------------------------
+HOW THE REST GOES
+--------------------------------------------------------------------------------
+
+Stages A to H, one at a time, each ending with: what you built, what the
+verifier says, what went into UNVERIFIED.md. Do not roll into the next stage.
+
+Stages are LETTERED so they never get confused with Document 1's numbered
+phases. Say "Stage C" or "Phase 4" -- never a bare number.
+
+Stage F is the one to slow down on. Every tool in it can write to the wrong
+directory silently, and "no exception was thrown" is not evidence that it wrote
+where you intended.
+
+Three pieces of Document 8 land in files you have already built and are easy to
+miss -- the Group chooser in AdminConsole.ps1 before Stage E, and the two
+ToolManager and Test-Toolkit additions above before Stage A. Document 8 section
+5 has the table.
+
+One more thing about Document 8: where an older document says something is "out
+of scope", check section 0 before believing it is cancelled. Most of those
+things -- reports, SharePoint tools, provisioning, theme editing -- were
+deferred to a stage, not dropped. The exclusion table in section 6 is the list
+of things that really are out.

@@ -1,0 +1,133 @@
+﻿{
+  "_comment": [
+    "TENANT FACTS. This is the only file in the toolkit permitted to contain a",
+    "domain name, a server name, or an organisation's internal vocabulary.",
+    "Everything else reads from here. If a tenant name appears in a .ps1 file,",
+    "that is a bug -- Test-Toolkit checks for it.",
+    "",
+    "Engineer preferences (paths, browser profiles) live in Settings.json, not",
+    "here. This file is the same on every machine at a tenant; that one is not.",
+    "",
+    "SHAPED FOR A HYBRID TENANT WITH ONE AD DOMAIN. Directories is a LIST and",
+    "the toolkit does not care how long it is -- but a template that ships as",
+    "an empty array reads as 'fill in something' rather than 'fill in this',",
+    "and an operator's first run then greys out every AD tool with no hint as",
+    "to why. One populated entry is the shape to copy, not a limit.",
+    "",
+    "Rename the Id to whatever this organisation calls its directory. It is an",
+    "identifier, not a label: it is written into the Environment column of the",
+    "audit log and passed as -DirectoryId between tools, so short and stable",
+    "beats descriptive. Label is the descriptive one and can be changed freely."
+  ],
+
+  "TenantName": "",
+  "PrimaryDomain": "",
+  "OnMicrosoftDomain": "",
+
+  "_comment_Capabilities": [
+    "What this tenant HAS. A false here greys out every tool that needs it,",
+    "which is the intended way to hide capability rather than deleting tools.",
+    "Set for hybrid: mailboxes both on-premises and in Exchange Online, with a",
+    "synchronised AD. Pim is ON: rights here are eligible, not standing.",
+    "",
+    "SharePointOnline is OFF deliberately. The tenant has it; the first pass has",
+    "no tool that uses it, and a capability flag that is true with nothing behind",
+    "it puts a permanently red indicator on the console. Turn it on in the same",
+    "change that adds the first SharePoint tool."
+  ],
+  "Capabilities": {
+    "ExchangeOnline": true,
+    "SharePointOnline": false,
+    "OnPremAD": true,
+    "OnPremExchange": true,
+    "Pim": true,
+    "PimTimer": true
+  },
+
+  "_comment_Directories": [
+    "ONE ENTRY PER AD DOMAIN. IsDefault decides which one is assumed when a",
+    "tool is not told; with a single directory it is assumed either way, but",
+    "set it anyway so adding a second later does not silently change behaviour.",
+    "",
+    "DomainControllers is OPTIONAL and empty is the better answer unless there",
+    "is a reason. Naming none lets AD locate a controller, which is what you",
+    "want; naming one pins writes to that box and owns the consequences when it",
+    "reboots. See ARCHITECTURE 14f -- a wrong pin is worse than no pin.",
+    "",
+    "The two OU values say where NEW objects go, in the canonical form ADUC",
+    "shows: contoso.com/Accounts/Resource Mailbox. Blank means the tool asks",
+    "each time, which is correct until someone decides the answer."
+  ],
+  "Directories": [
+    {
+      "Id": "Corp",
+      "Label": "Corporate directory",
+      "Domain": "",
+      "DomainControllers": [],
+      "SharedMailboxOu": "",
+      "DistributionGroupOu": "",
+      "IsDefault": true
+    }
+  ],
+
+  "_comment_OnPremExchange": [
+    "ServerUri is the PowerShell endpoint, e.g. http://exch01.contoso.com/PowerShell/",
+    "PreferredDomainController is a fallback for tools that need one and were",
+    "given no directory; leaving it blank is safe and usually right."
+  ],
+  "OnPremExchange": {
+    "ServerUri": "",
+    "PreferredDomainController": ""
+  },
+
+  "_comment_Pim": [
+    "DurationHours MUST MATCH THIS TENANT'S PIM POLICY. It is 9 here.",
+    "",
+    "This is not a preference and not a timeout the toolkit enforces -- it is",
+    "how long Entra actually grants access for, and the console header counts",
+    "down from it. Set it wrong and the countdown is confidently wrong, which",
+    "is worse than no countdown: an operator who trusts it will start a long",
+    "job believing they have hours left.",
+    "",
+    "Change it here and nowhere else. No script may hardcode a duration."
+  ],
+  "Pim": {
+    "DurationHours": 9,
+    "GroupsEligibleUrl": "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadgroup",
+    "RolesEligibleUrl": "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadmigratedroles",
+    "GroupsActiveUrl": "",
+    "RolesActiveUrl": ""
+  },
+
+  "_comment_LicenseGroups": [
+    "Group-based licensing only. Name is the group's CN, Sku identifies which",
+    "licence it grants, Directory is the Id above.",
+    "",
+    "Purpose is what a reader needs and nothing used to record: 'Termination'",
+    "means a leaver actually holds it and it is safe to remove; 'Report' means",
+    "it exists so a report can find people and must NOT be removed. Getting",
+    "this wrong removes someone from a group they were never in, reports the",
+    "step done, and leaves the licence assigned.",
+    "",
+    "Example shape, delete if licensing here is not group-based:",
+    "  { \"Name\": \"E5 License - Full\", \"Sku\": \"E5\", \"Directory\": \"Corp\", \"Purpose\": \"Termination\" }"
+  ],
+  "LicenseGroups": [],
+
+  "FeatureRequest": {
+    "_comment": [
+      "Where the Feature Request tool sends requests. The operator never sees",
+      "this address -- it goes on BCC -- but it is not a secret: it is in a",
+      "config file anyone can open. It lives here rather than in the script",
+      "because Test-Toolkit rejects a mail domain written into a .ps1."
+    ],
+    "Recipient": ""
+  },
+
+  "SharePoint": {
+    "AdminUrl": "",
+    "MySiteHost": ""
+  },
+
+  "Theme": ""
+}

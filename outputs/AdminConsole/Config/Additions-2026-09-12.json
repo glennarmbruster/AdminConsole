@@ -1,0 +1,290 @@
+﻿{
+  "_comment": "Read by Add-ConsoleAdditions.ps1, which MERGES these into the live Config files after backing them up. Nothing in here replaces a file. A Section this console does not have falls back to the first one, and the plan says so.",
+  "Tools": [
+    {
+      "Name": "Quarantine Manager",
+      "Script": ".\\QuarantineManager.ps1",
+      "Section": "Daily Scripts",
+      "ObjectTypes": [
+        "Mailbox"
+      ],
+      "Tier": "Tier2",
+      "NewProcess": false
+    },
+    {
+      "Name": "Migration Status",
+      "Script": ".\\MigrationStatus.ps1",
+      "Section": "Admin Tools",
+      "ObjectTypes": [
+        "Mailbox"
+      ],
+      "Tier": "Tier2",
+      "NewProcess": false
+    },
+    {
+      "Name": "Mail Flow Connectors",
+      "Script": ".\\MailFlowConnectors.ps1",
+      "Section": "Admin Tools",
+      "ObjectTypes": [],
+      "Tier": "Tier2",
+      "NewProcess": false
+    },
+    {
+      "Name": "Hybrid Attribute Check",
+      "Script": ".\\HybridAttributeCheck.ps1",
+      "Section": "Admin Tools",
+      "ObjectTypes": [
+        "Mailbox"
+      ],
+      "Tier": "",
+      "NewProcess": false
+    },
+    {
+      "Name": "Dynamic DL Preview",
+      "Script": ".\\DynamicDLPreview.ps1",
+      "Section": "Reporting",
+      "ObjectTypes": [
+        "Mailbox",
+        "UnifiedGroup",
+        "OnpremGroup"
+      ],
+      "Tier": "Tier1",
+      "NewProcess": false
+    },
+    {
+      "Name": "Spam Policy Viewer",
+      "Script": ".\\SpamPolicyViewer.ps1",
+      "Section": "Reporting",
+      "ObjectTypes": [
+        "Mailbox"
+      ],
+      "Tier": "Tier1",
+      "NewProcess": false
+    },
+    {
+      "Name": "Domain Mail Auth Check",
+      "Script": ".\\DomainMailAuthCheck.ps1",
+      "Section": "Reporting",
+      "ObjectTypes": [],
+      "Tier": "",
+      "NewProcess": false
+    },
+    {
+      "Name": "Free/Busy Viewer",
+      "Script": ".\\FreeBusyViewer.ps1",
+      "Section": "Reporting",
+      "ObjectTypes": [],
+      "Tier": "",
+      "NewProcess": false
+    },
+    {
+      "Name": "Automap Fix",
+      "Script": ".\\Automap-Fix.ps1",
+      "Section": "Mailbox and Access",
+      "ObjectTypes": [
+        "Mailbox"
+      ],
+      "Tier": "",
+      "NewProcess": false
+    },
+    {
+      "Name": "User-Defined Delegates",
+      "Script": ".\\UserDefinedDelegates.ps1",
+      "Section": "Mailbox and Access",
+      "ObjectTypes": [
+        "Mailbox"
+      ],
+      "Tier": "",
+      "NewProcess": false
+    },
+    {
+      "Name": "Retention Policy",
+      "Script": ".\\Retention-Policy.ps1",
+      "Section": "Mailbox and Access",
+      "ObjectTypes": [
+        "Mailbox"
+      ],
+      "Tier": "",
+      "NewProcess": false
+    },
+    {
+      "Name": "Diagnose AD Gate",
+      "Script": ".\\Diagnose-AdGate.ps1",
+      "Section": "Reporting",
+      "ObjectTypes": [],
+      "Tier": "",
+      "NewProcess": false
+    },
+    {
+      "Name": "Diagnose ExO Resolve",
+      "Script": ".\\Diagnose-ExoResolve.ps1",
+      "Section": "Reporting",
+      "ObjectTypes": [],
+      "Tier": "",
+      "NewProcess": false
+    },
+    {
+      "Name": "Exchange Health Check",
+      "Script": ".\\Exchange-HealthCheck.ps1",
+      "Section": "Reporting",
+      "ObjectTypes": [],
+      "Tier": "",
+      "NewProcess": false
+    },
+    {
+      "Name": "Clear IIS Logs",
+      "Script": ".\\Clear-IISLogs.ps1",
+      "Section": "Reporting",
+      "ObjectTypes": [],
+      "Tier": "",
+      "NewProcess": false
+    }
+  ],
+  "SectionAccents": {
+    "Connect": "#3D9970",
+    "Daily Scripts": "#2E6BD6",
+    "Admin Tools": "#6B7280",
+    "Reporting": "#1F9BA8",
+    "DL to Shared Mbx": "#C4772E"
+  },
+  "Themes": {
+    "Mist": {
+      "Description": "Muted light blue-grey. The calmer of the two.",
+      "Enabled": true,
+      "FormBack": "#DFE7EF",
+      "FormText": "#1C2C3A",
+      "PanelBack": "#D1DDE8",
+      "GroupText": "#24435E",
+      "ButtonBack": "#BCCCDB",
+      "ButtonText": "#1A2A38",
+      "ButtonBorder": "#7E97AD",
+      "ButtonHover": "#AABDCF",
+      "ButtonDown": "#98AEC3",
+      "InputBack": "#F6F9FC",
+      "InputText": "#1C2C3A",
+      "GradientTo": "#CAD8E4",
+      "Logo": "",
+      "SelectedText": "#152431",
+      "ServiceNowBack": "#0A5C42",
+      "ServiceNowText": "#FFFFFF",
+      "ServiceNowHover": "#0E7856",
+      "ServiceNowBorder": "#16A072",
+      "QuickLaunchAdminBack": "#122D5C",
+      "QuickLaunchAdminText": "#FFFFFF",
+      "QuickLaunchAdminHover": "#1B448A",
+      "QuickLaunchAdminBorder": "#407AD6"
+    },
+    "Powder": {
+      "Description": "Muted light blue. Slightly bluer and lighter than Mist.",
+      "Enabled": true,
+      "FormBack": "#E4EDF6",
+      "FormText": "#17293C",
+      "PanelBack": "#D5E3F0",
+      "GroupText": "#1E4870",
+      "ButtonBack": "#BFD3E6",
+      "ButtonText": "#152738",
+      "ButtonBorder": "#7FA0BE",
+      "ButtonHover": "#ACC6DE",
+      "ButtonDown": "#99B8D5",
+      "InputBack": "#F8FBFE",
+      "InputText": "#17293C",
+      "GradientTo": "#CFE0EE",
+      "Logo": "",
+      "SelectedText": "#112132",
+      "ServiceNowBack": "#0A5C42",
+      "ServiceNowText": "#FFFFFF",
+      "ServiceNowHover": "#0E7856",
+      "ServiceNowBorder": "#16A072",
+      "QuickLaunchAdminBack": "#122D5C",
+      "QuickLaunchAdminText": "#FFFFFF",
+      "QuickLaunchAdminHover": "#1B448A",
+      "QuickLaunchAdminBorder": "#407AD6"
+    },
+    "Sapphire Light": {
+      "Description": "Sapphire, lifted. Noticeably lighter, contrast still strong.",
+      "Enabled": true,
+      "FormBack": "#314972",
+      "FormText": "#FFFFFF",
+      "PanelBack": "#355182",
+      "GroupText": "#FFFFFF",
+      "ButtonBack": "#35578C",
+      "ButtonText": "#FFFFFF",
+      "ButtonBorder": "#AFD2FF",
+      "ButtonHover": "#4D6B9A",
+      "ButtonDown": "#5B77A2",
+      "InputBack": "#2C3E5C",
+      "InputText": "#FFFFFF",
+      "GradientTo": "#2A3A57",
+      "Logo": "",
+      "SelectedText": "#DCEBFF",
+      "ServiceNowBack": "#0A5C42",
+      "ServiceNowText": "#FFFFFF",
+      "ServiceNowHover": "#0E7856",
+      "ServiceNowBorder": "#16A072",
+      "QuickLaunchAdminBack": "#122D5C",
+      "QuickLaunchAdminText": "#FFFFFF",
+      "QuickLaunchAdminHover": "#1B448A",
+      "QuickLaunchAdminBorder": "#407AD6"
+    },
+    "Sapphire Bright": {
+      "Description": "Sapphire, lifted further. The lightest that stays comfortably readable.",
+      "Enabled": true,
+      "FormBack": "#41587D",
+      "FormText": "#FFFFFF",
+      "PanelBack": "#455F8C",
+      "GroupText": "#FFFFFF",
+      "ButtonBack": "#4D72AA",
+      "ButtonText": "#FFFFFF",
+      "ButtonBorder": "#6697DD",
+      "ButtonHover": "#5784C7",
+      "ButtonDown": "#446390",
+      "InputBack": "#3D4E6A",
+      "InputText": "#FFFFFF",
+      "GradientTo": "#3B4A65",
+      "Logo": "",
+      "SelectedText": "#FFFFFF",
+      "ServiceNowBack": "#0A5C42",
+      "ServiceNowText": "#FFFFFF",
+      "ServiceNowHover": "#0E7856",
+      "ServiceNowBorder": "#16A072",
+      "QuickLaunchAdminBack": "#122D5C",
+      "QuickLaunchAdminText": "#FFFFFF",
+      "QuickLaunchAdminHover": "#1B448A",
+      "QuickLaunchAdminBorder": "#407AD6"
+    },
+    "Navy": {
+      "Description": "Dark. Deep navy with a lighter blue accent and a vertical gradient.",
+      "Enabled": true,
+      "FormBack": "#0F2B5B",
+      "FormText": "#DCE6F5",
+      "PanelBack": "#14356E",
+      "GroupText": "#9DB8E0",
+      "ButtonBack": "#1E4D94",
+      "ButtonText": "#FFFFFF",
+      "ButtonBorder": "#3D7BD4",
+      "ButtonHover": "#2A63B8",
+      "ButtonDown": "#123A73",
+      "InputBack": "#0A1F42",
+      "InputText": "#E8F0FC",
+      "GradientTo": "#071A3C",
+      "Logo": "",
+      "SelectedText": "#7FD4FF",
+      "ServiceNowBack": "#0A5C42",
+      "ServiceNowText": "#FFFFFF",
+      "ServiceNowHover": "#0E7856",
+      "ServiceNowBorder": "#16A072",
+      "QuickLaunchAdminBack": "#122D5C",
+      "QuickLaunchAdminText": "#FFFFFF",
+      "QuickLaunchAdminHover": "#1B448A",
+      "QuickLaunchAdminBorder": "#407AD6",
+      "FontFamily": "Segoe UI",
+      "MonoFamily": "Consolas",
+      "AccentBack": "#2A62B8",
+      "AccentText": "#FFFFFF",
+      "AccentHover": "#3470C8",
+      "DangerColor": "#E06666",
+      "HeaderBack": "#081E45",
+      "HeaderText": "#C9D8F0"
+    }
+  }
+}

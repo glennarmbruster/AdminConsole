@@ -1,0 +1,137 @@
+﻿{
+  "Note": "Scripts a build has made redundant. The Park Scripts button on the Dashboard reads this file, shows every entry with the recommended ones already ticked, and parks whatever is left ticked. Top it up when a new build absorbs more tools.",
+  "Updated": "2026-09-21",
+  "HowRecommendWorks": "Recommend true means this tool is genuinely superseded and the entry is ticked when the window opens. Recommend false means it is offered but NOT ticked -- a judgement call the operator makes, not one this file makes for them.",
+  "Scripts": [
+    {
+      "Script": "AD-Lookup.ps1",
+      "Reason": "Unified Lookup (searches AD always; Attributes opens the shared AD / Cloud / Mail editor)",
+      "Recommend": true
+    },
+    {
+      "Script": "AuditSMB.ps1",
+      "Reason": "Audit.ps1 -- Audit SMB tab (FreeText search plus the Full Access holder list)",
+      "Recommend": true
+    },
+    {
+      "Script": "AuditUser.ps1",
+      "Reason": "Audit.ps1 -- Audit Mailbox tab (UserIds search)",
+      "Recommend": true
+    },
+    {
+      "Script": "CalendarPermissions.ps1",
+      "Reason": "Mailbox Editor -- Folder Permissions tab",
+      "Recommend": true
+    },
+    {
+      "Script": "CalendarProcessing.ps1",
+      "Reason": "Room Editor -- Booking tab",
+      "Recommend": true
+    },
+    {
+      "Script": "ConvertMailboxType.ps1",
+      "Reason": "Mailbox Editor -- Overview, Type (converts both sides)",
+      "Recommend": true
+    },
+    {
+      "Script": "DLMemberships.ps1",
+      "Reason": "Person Editor -- Groups tab (and can add/remove, which this could not)",
+      "Recommend": true
+    },
+    {
+      "Script": "EnableArchive.ps1",
+      "Reason": "Mailbox Editor -- Overview, Archive",
+      "Recommend": true
+    },
+    {
+      "Script": "ForwardingEditor.ps1",
+      "Reason": "Mailbox Editor -- Mail Flow tab",
+      "Recommend": true
+    },
+    {
+      "Script": "Group-Manager-Editor.ps1",
+      "Reason": "Group Editor",
+      "Recommend": true
+    },
+    {
+      "Script": "Group-Manager.ps1",
+      "Reason": "Group Editor",
+      "Recommend": true
+    },
+    {
+      "Script": "GroupEditor.ps1",
+      "Reason": "Group Editor (Microsoft 365 groups)",
+      "Recommend": true
+    },
+    {
+      "Script": "Hide-Unhide.ps1",
+      "Reason": "Mailbox Editor -- Overview, hide from address book",
+      "Recommend": true
+    },
+    {
+      "Script": "HoldRetention.ps1",
+      "Reason": "Mailbox Editor -- Retention tab",
+      "Recommend": true
+    },
+    {
+      "Script": "InboxRules.ps1",
+      "Reason": "Mailbox Editor -- Inbox Rules tab",
+      "Recommend": true
+    },
+    {
+      "Script": "MailboxHealth.ps1",
+      "Reason": "Mailbox Editor -- Health tab",
+      "Recommend": true
+    },
+    {
+      "Script": "MailboxPermissions.ps1",
+      "Reason": "Mailbox Editor -- Access tab",
+      "Recommend": true
+    },
+    {
+      "Script": "MBX-Stats.ps1",
+      "Reason": "Mailbox Editor -- Statistics tab (folders biggest first, Recoverable Items, archive on a button); size and quota on Overview",
+      "Recommend": true
+    },
+    {
+      "Script": "OOFEditor.ps1",
+      "Reason": "Mailbox Editor -- Automatic Replies tab (the editor itself lives in Common.ps1)",
+      "Recommend": true
+    },
+    {
+      "Script": "RecoverDeletedItems.ps1",
+      "Reason": "Mailbox Editor -- Recover Items tab (Deleted Items, Recoverable and Purges, each row labelled with which; plus From/To and days-until-purge, which the standalone had not)",
+      "Recommend": true
+    },
+    {
+      "Script": "Retention-Policy.ps1",
+      "Reason": "Mailbox Editor -- Retention tab",
+      "Recommend": true
+    },
+    {
+      "Script": "RoomPlace.ps1",
+      "Reason": "Room Editor -- Place tab",
+      "Recommend": true
+    },
+    {
+      "Script": "RoomRegional.ps1",
+      "Reason": "Room Editor -- Regional tab",
+      "Recommend": true
+    },
+    {
+      "Script": "Set-BookingPolicy.ps1",
+      "Reason": "Room Editor -- Booking tab",
+      "Recommend": true
+    },
+    {
+      "Script": "UserDefinedDelegates.ps1",
+      "Reason": "Mailbox Editor -- Folder Permissions tab (delegates)",
+      "Recommend": true
+    },
+    {
+      "Script": "RoomList.ps1",
+      "Reason": "Membership is in the Room Editor, but CREATING a room list is a tenant-wide object with no home in a per-room window. Listed in PARK-LIST.txt under YOUR CALL, NOT LISTED.",
+      "Recommend": false
+    }
+  ]
+}

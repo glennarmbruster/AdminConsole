@@ -1,0 +1,77 @@
+﻿AdminConsoleFH -- what this is and how to unpack it
+===================================================
+
+EVERY FILE IN THIS ZIP HAS HAD .txt ADDED TO ITS NAME so that it survives
+mail filtering. Nothing will run until the .txt is taken off again.
+
+TO UNPACK
+---------
+1. Extract the whole AdminConsoleFH folder somewhere local.
+2. Remove the trailing .txt from every file, keeping the folder structure.
+   There is a script in this folder that does it:
+
+       a. Rename  rename.txt  to  rename.ps1
+       b. From inside the extracted AdminConsoleFH folder:
+
+              .\rename.ps1            shows what it would do, changes nothing
+              .\rename.ps1 -Apply     does it
+
+   It takes ONE .txt off each name, so this file comes back as
+   _READ-ME-FIRST.txt rather than losing its extension, and it refuses to
+   overwrite anything that is already there.
+
+   The one-liner it replaces, if you would rather not run a script:
+
+       Get-ChildItem -Recurse -File -Filter *.txt |
+           Rename-Item -NewName { $_.Name -replace '\.txt$', '' }
+3. Unblock the folder (files downloaded or mailed carry a block flag that
+   stops PowerShell running them):
+
+       Get-ChildItem -Recurse -File | Unblock-File
+
+   There is also an Unblock Files tool on the console for this.
+4. Start it with:  .\AdminConsole.ps1
+
+UPGRADING A FOLDER THAT IS ALREADY IN USE  (2026-09-16 build)
+------------------------------------------------------------
+DO NOT COPY THE Config FOLDER OVER YOUR EXISTING ONE. The Config in this
+zip is a neutral scaffold: empty paths, a skeleton Tenant.json, and the
+stock Tools.json / Sections.json / Themes.json / QuickLaunch.json. Yours
+are the live ones. Copy everything EXCEPT Config\, and nothing you have
+set up is lost. The console will find its Config\ where it always was.
+
+If anyone has ARRANGED the console by editing Tools.json or Sections.json
+directly, have them open Dashboard > Save / Load Layout and press Save
+BEFORE the copy. That arrangement becomes their own layout profile
+afterwards (Load), and the shared files can be replaced at any time.
+
+What is new in this build, in one paragraph: the console is per person.
+Each Windows account gets its own layout, theme, sections, grouping and
+hidden tools, kept in Config\Users\<account>.json and untouched by anyone
+else. Arrange, Theme Manager, Tool Manager's sections and Park In Place
+each ask once whether a change is for you or for everyone. Three display
+bugs that only showed on high-DPI or short screens are fixed, and
+  .\AdminConsole.ps1 -ZoomDiag
+writes every header control's real geometry to the startup log if a
+display still looks wrong. Details: markdown\ARCHITECTURE.md sections 56-59.
+
+BEFORE IT WILL DO ANYTHING USEFUL
+---------------------------------
+Config\Tenant.json and Config\Settings.json are the only two files that know
+which tenant this is and where things live on your machine. Check both. The
+rest of the folder is deliberately tenant-neutral.
+
+Config\Settings.json ships with empty paths, which means "beside the
+toolkit". Set them in Tool Manager on first run if you want them elsewhere.
+
+NOTHING HERE HAS BEEN RUN
+-------------------------
+Not one script in this build has touched a live directory or tenant. Read
+markdown\ARCHITECTURE.md before changing anything -- section 10 is written
+for whoever maintains this, and section 11 is the checklist to run through
+before shipping a change.
+
+markdown\TOOL-HELP.md is every tool's help text in one file.
+markdown\SERVERNAMES.md records the server names that used to be hardcoded.
+markdown\PERFORMANCE-BACKLOG.md is the list of per-tool improvements found by
+scan and deliberately not applied without testing.

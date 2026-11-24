@@ -1,0 +1,70 @@
+================================================================================
+PASTE THIS INTO DEVIN. Put the three files in the repo first.
+================================================================================
+
+There are three files in this repo:
+
+    DEVIN-PACK.md              ten instruction documents, concatenated
+    DEVIN-REFERENCE-CODE.md    sixteen working files, concatenated
+    DEVIN-REFERENCE-CODE-2.md  eight more working files, concatenated
+
+Read DEVIN-PACK.md and start at STEP 0, which is the first thing in it.
+
+SCOPE, SO IT IS CLEAR FROM THE START. The finished toolkit is 55 console
+buttons over 65 .ps1 files. Document 8 specifies all of it. We are NOT building
+all of it at once: Document 1 section 5 is the first pass — eight tools — and
+you stop there for review. Then we work through Document 8's lettered stages,
+A to H, one at a time.
+
+Where an early document says something is "out of scope", check Document 8
+section 0 before believing it is cancelled. Most of those things are deferred
+to a stage, not dropped.
+
+Do these in order and stop after each until I confirm:
+
+1. EXTRACT. Write the two reference-code files out into real files under
+   reference/ , exactly as Step 0 describes. Then report how many files you
+   wrote and their line counts, against the counts stated in each section
+   heading. Do not proceed if any count differs — a subtly truncated
+   Common.ps1 would poison everything built on top of it.
+
+2. READ. Documents 1 and 2 of DEVIN-PACK.md in full — the build prompt and the
+   hard constraints. Then tell me, in your own words: what platform this runs
+   on versus what you are building on, and why that difference matters more
+   here than usual. I want to know you have that before anything else happens.
+
+3. VERIFIER. Get reference/Test-Toolkit.ps1 running under pwsh. Add the PS7002
+   rule described in Document 4. Then show me two things: a clean run over
+   reference/ , and that rule firing on a scratch file containing a PowerShell
+   7-only construct. A check that has never been shown to fail has not been
+   tested.
+
+Only after those three do you write any toolkit code.
+
+Notes on how I want to work:
+
+- Commit per file, not per phase, with a message saying which constraints it
+  applies. A thirty-file commit cannot be reviewed and will not be.
+- Keep UNVERIFIED.md from the first line of code. Every time you write
+  something you could not confirm — a cmdlet surface, a behaviour, a parameter
+  effect — add a line with the file, what you assumed, and what would settle
+  it. I would rather have a long UNVERIFIED.md than a confident wrong build.
+- You cannot run this toolkit. No forms, no tenant, no Exchange. Say "parsed
+  and linted", never "tested".
+- If something in the constraints conflicts with something in a tool spec, the
+  constraint wins — and tell me about the conflict rather than quietly
+  choosing.
+- If you cannot verify a cmdlet against Microsoft Learn, stop and say so. Do
+  not write plausible code.
+
+There is a hard checkpoint after the first tool (Mailbox Health). Build the
+console and that one tool, then stop. I will run it on Windows before you build
+the other seven.
+
+After the first pass is accepted, we go stage by stage through Document 8.
+Stages are lettered A to H so they never get confused with Document 1's
+numbered phases. Each stage ends the same way: tell me what you built, what the
+verifier says, and what went into UNVERIFIED.md. Do not roll into the next one.
+
+Expect this to take a while and expect me to keep the checkpoints. Forty-eight
+tools built in one run with no review is not faster, it is just harder to fix.

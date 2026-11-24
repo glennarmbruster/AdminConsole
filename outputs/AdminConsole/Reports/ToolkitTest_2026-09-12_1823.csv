@@ -1,0 +1,3 @@
+﻿"Severity","File","Line","Rule","Message"
+"WARN","MobileDevices.ps1","237","HDL001","Click handler calls Exchange/AD directly with no try/catch. An exception here is caught by .NET, not PowerShell, and the operator sees assembly versions instead of a line number. JUDGEMENT: a handler that delegates to a function which catches its own errors is fine -- check where the call goes before adding a try here."
+"WARN","Unified-Lookup.ps1","2375","HDL001","Click handler calls Exchange/AD directly with no try/catch. An exception here is caught by .NET, not PowerShell, and the operator sees assembly versions instead of a line number. JUDGEMENT: a handler that delegates to a function which catches its own errors is fine -- check where the call goes before adding a try here."

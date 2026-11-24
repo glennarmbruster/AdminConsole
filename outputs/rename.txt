@@ -1,0 +1,131 @@
+﻿#Requires -Version 5.1
+<#
+    rename.ps1
+    Put the real extensions back on a toolkit that was shipped as .txt
+
+    Author   : Glenn Armbruster
+    Revised  : 2026-09-16
+
+    WHY THE FILES ARRIVED LIKE THIS. Mail filters and download scanners reject
+    or quarantine a zip full of .ps1, so every file in the package had .txt
+    appended before it was sent: AdminConsole.ps1 became AdminConsole.ps1.txt,
+    Tools.json became Tools.json.txt. Nothing else was changed -- the contents
+    are byte for byte what they were.
+
+    WHAT THIS DOES. Walks this folder and every folder under it, and takes ONE
+    trailing .txt off any file that has it. AdminConsole.ps1.txt becomes
+    AdminConsole.ps1; _READ-ME-FIRST.txt.txt becomes _READ-ME-FIRST.txt. A file
+    that does not end in .txt is not touched.
+
+    HOW TO RUN IT.
+
+        1. Rename this file from rename.txt to rename.ps1
+        2. Put it in the TOP folder of the extracted package
+        3. Right-click it and choose 'Run with PowerShell', or from a prompt:
+
+               .\rename.ps1            (shows what it would do, changes nothing)
+               .\rename.ps1 -Apply     (does it)
+
+    IT SHOWS BEFORE IT DOES. Run it with no switches first and read the list.
+    -Apply is deliberately an extra word: this renames every file in a folder
+    tree and there is no undo beyond running the packaging step again.
+
+    IT NEVER OVERWRITES. If stripping .txt would land on a name that already
+    exists -- a leftover from a half-finished run, say -- that one file is
+    reported and skipped rather than silently replacing something.
+
+    IT SKIPS ITSELF, AND THE COPY IT CAME FROM. Once renamed to rename.ps1
+    this file no longer ends in .txt, so it is not a candidate -- but the
+    original rename.txt is usually still sitting beside it, and stripping that
+    would leave a file called 'rename' with no extension. Both are skipped.
+#>
+
+[CmdletBinding()]
+param(
+    # The folder to walk. Defaults to wherever this script is, which is the
+    # normal case: drop it in the top of the package and run it.
+    [string]$Path = $PSScriptRoot,
+
+    # Without this, nothing is renamed -- the list is printed and that is all.
+    [switch]$Apply
+)
+
+if (-not $Path) { $Path = (Get-Location).Path }
+if (-not (Test-Path -LiteralPath $Path)) {
+    Write-Host "Folder not found: $Path" -ForegroundColor Red
+    return
+}
+
+$root = (Resolve-Path -LiteralPath $Path).Path
+$self = ''
+try { if ($PSCommandPath) { $self = (Resolve-Path -LiteralPath $PSCommandPath).Path } } catch { }
+
+Write-Host ''
+Write-Host "Folder : $root" -ForegroundColor Cyan
+Write-Host "Mode   : $(if ($Apply) { 'APPLY -- files will be renamed' } else { 'PREVIEW -- nothing will change' })" `
+    -ForegroundColor $(if ($Apply) { 'Yellow' } else { 'Gray' })
+Write-Host ''
+
+# -Filter rather than -Include: -Include needs a wildcard on the path to work
+# with -Recurse and silently returns nothing without one, which would read as
+# 'there was nothing to do'.
+$files = @(Get-ChildItem -LiteralPath $root -Filter '*.txt' -File -Recurse -ErrorAction SilentlyContinue)
+
+if ($files.Count -eq 0) {
+    Write-Host 'Nothing ends in .txt here. Either it has already been run, or this is the wrong folder.' -ForegroundColor Yellow
+    return
+}
+
+$done = 0
+$skipped = 0
+$failed = 0
+
+foreach ($f in $files) {
+    if ($self -and $f.FullName -eq $self) { continue }
+    # The copy this script was renamed from, still sitting in the folder.
+    # Stripping it produces an extensionless 'rename' and an email asking
+    # what that is.
+    if ($f.Name -eq 'rename.txt') { continue }
+
+    # One .txt, not all of them: a file genuinely called notes.txt.txt should
+    # come back as notes.txt, not as notes.
+    $newName = $f.Name -replace '\.txt$', ''
+    if (-not $newName -or $newName -eq $f.Name) { continue }
+
+    $target = Join-Path $f.DirectoryName $newName
+    $shown  = $f.FullName.Substring($root.Length).TrimStart('\')
+
+    if (Test-Path -LiteralPath $target) {
+        Write-Host ("  SKIP    {0}   ->   {1} already exists" -f $shown, $newName) -ForegroundColor Yellow
+        $skipped++
+        continue
+    }
+
+    if (-not $Apply) {
+        Write-Host ("  would   {0}   ->   {1}" -f $shown, $newName)
+        $done++
+        continue
+    }
+
+    try {
+        Rename-Item -LiteralPath $f.FullName -NewName $newName -ErrorAction Stop
+        Write-Host ("  renamed {0}   ->   {1}" -f $shown, $newName) -ForegroundColor Green
+        $done++
+    } catch {
+        Write-Host ("  FAILED  {0} : {1}" -f $shown, $_.Exception.Message) -ForegroundColor Red
+        $failed++
+    }
+}
+
+Write-Host ''
+if ($Apply) {
+    Write-Host ("{0} renamed, {1} skipped, {2} failed." -f $done, $skipped, $failed) `
+        -ForegroundColor $(if ($failed) { 'Red' } else { 'Green' })
+    if ($failed -eq 0 -and $skipped -eq 0) {
+        Write-Host 'Read _READ-ME-FIRST.txt next -- it says what to do before the console is run.' -ForegroundColor Cyan
+    }
+} else {
+    Write-Host ("{0} file(s) would be renamed, {1} would be skipped." -f $done, $skipped) -ForegroundColor Cyan
+    Write-Host 'Run it again with -Apply to do it.' -ForegroundColor Cyan
+}
+Write-Host ''

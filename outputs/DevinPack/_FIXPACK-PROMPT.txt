@@ -1,0 +1,224 @@
+================================================================================
+FIX PACK -- the two audit tools, and Unified Lookup's routing
+Paste this whole file into Devin. Seven working scripts follow the prompt.
+================================================================================
+
+Three tools in the build are wrong in the same way: THEY DO THE MECHANICAL HALF
+AND SKIP THE HALF THAT MADE THEM WORTH BUILDING.
+
+Two of the three are my fault, not yours -- the spec you were given described
+something different from what these tools actually do. The working originals are
+included below. Read the CODE, not the header comments; see the warning under
+Part A.
+
+--------------------------------------------------------------------------------
+PART A -- THE TWO AUDIT TOOLS ARE NOT SETTINGS REPORTS
+--------------------------------------------------------------------------------
+
+THE SPEC YOU WERE GIVEN SAID:
+
+    "Reports the mailbox audit settings on a user mailbox -- which actions are
+     being recorded, for the owner, for delegates, and for administrators."
+
+THAT IS WRONG. It came from the header comment in the original file, and THE
+HEADER COMMENT IN THE ORIGINAL FILE IS ALSO WRONG. It describes a tool that was
+never built. The code does something else entirely, and the code is right.
+
+WHAT THESE TOOLS ACTUALLY DO
+
+They search the UNIFIED AUDIT LOG for what actually happened to a mailbox --
+who opened it, what they did, from where, and when. Not configuration. Events.
+
+    Search-UnifiedAuditLog -StartDate .. -EndDate .. -UserIds <mailbox>
+                           -SessionId <guid> -SessionCommand ReturnLargeSet
+                           -ResultSize 5000 [-Operations ..]
+
+THE MECHANICS THAT MATTER, all visible in the originals below:
+
+  PAGING IS MANDATORY AND IS NOT A LOOP OVER -ResultSize.
+  Search-UnifiedAuditLog pages through a SESSION. You call it repeatedly with
+  the SAME SessionId and SessionCommand = 'ReturnLargeSet', and each call
+  returns the next page. Stop when a page comes back short, or empty, or you hit
+  the ceiling. The original caps at 15 iterations, 5000 per page, 50000 total.
+  A single call without a session returns a truncated answer and looks complete.
+
+  IT MUST BE CANCELLABLE MID-SEARCH. A wide date range on a busy mailbox runs
+  for minutes. The original checks a cancel flag between pages and returns what
+  it has. A search you cannot stop is a tool people stop using.
+
+  AuditData IS A JSON STRING, NOT AN OBJECT. Parse it per record and keep the
+  raw text as well -- operators need the parsed columns for scanning and the raw
+  JSON for the one question the columns do not answer. Parse defensively; a
+  record whose JSON will not parse must degrade to the flat fields, not throw.
+
+  TIMESTAMPS ARE UTC IN THE LOG. Convert for display. The original parses
+  CreationTime with InvariantCulture and AssumeUniversal, then converts to
+  local. Do not skip the culture arguments.
+
+  OPERATION NAMES NEED A FRIENDLY MAP. 'MailItemsAccessed' and 'SendAs' mean
+  nothing to somebody reading a report under pressure. Keep both -- the raw
+  operation and a plain-language version -- in separate columns.
+
+THE COLUMNS (from ConvertTo-MailboxAuditRecord below):
+  time (local), operation, operation-friendly, actor, mailbox owner UPN,
+  client IP, client info, subject, folder, result status, raw JSON.
+
+THREE WARNINGS THAT MUST BE ON THE FORM, NOT ONLY IN THE HELP:
+  1. Requires an Exchange Online connection AND the 'View-Only Audit Logs' or
+     'Audit Logs' role in Microsoft Purview.
+  2. Entries can take 30+ MINUTES to appear. A just-performed action may
+     legitimately not show up yet, and without this line the tool looks broken
+     at exactly the moment somebody is testing it.
+  3. Default retention is 180 days unless Audit (Premium) or a custom policy
+     extends it.
+
+WHAT MAKES THE SHARED-MAILBOX VERSION DIFFERENT
+
+It is not a copy with a different title. Before searching, it reads WHO HAS FULL
+ACCESS -- Get-MailboxPermission, excluding NT AUTHORITY\SELF, inherited and deny
+entries -- and surfaces that list. On a shared mailbox the delegates ARE the
+story: the question is almost never "what did the owner do", it is "which of the
+six people with access did this". Show the delegate list, and make it obvious
+which actions came from a delegate rather than the owner.
+
+ALSO FIX THE HELP BLOCKS. Write TOOLKIT-HELP text that describes searching the
+audit log. The wrong text is what caused this, and leaving it in place means the
+next person rebuilds the same wrong tool.
+
+--------------------------------------------------------------------------------
+PART B -- UNIFIED LOOKUP LOOKS THINGS UP AND THEN ABANDONS YOU
+--------------------------------------------------------------------------------
+
+The search half is built and works. The half that makes it the most-used tool in
+the toolkit is missing: IT CLASSIFIES A RESULT AND THEN OPENS THE RIGHT TOOL FOR
+IT.
+
+Without that it is a find-things box that leaves the operator to work out which
+of six tools handles a synced distribution list -- which is the exact question
+the tool exists to answer.
+
+THIS MAY NOT BE YOUR MISTAKE. Unified Lookup was tool 3 of the first pass, and
+most of the tools it routes to did not exist yet. If you left the routing out
+because there was nothing to route to, that was reasonable. The destinations
+exist now.
+
+THE MECHANISM IS A TABLE, NOT A SWITCH STATEMENT
+
+See $script:HandOff in the original below. Each row:
+
+    Sources -- which values of the Source column the row applies to
+               ('On-prem', 'Synced', 'Cloud')
+    Types   -- regex matched against the recipient type; '.' matches all
+    Script  -- the file to open
+    Where   -- 'OnPrem'    launch a new process that connects on-premises first
+               'InProcess' run in this window, where the EXO session lives
+    Extra   -- switches handed to the child, e.g. -OnPrem
+
+FIRST MATCH WINS, SO ORDER MATTERS. Specific rows above general ones.
+
+TO ADD A DESTINATION YOU ADD A ROW. That is the entire extension mechanism and
+it is why this is a table rather than logic buried in a click handler. Keep it
+that way.
+
+FOUR RULES THE TABLE ENCODES, EACH PAID FOR BY A REAL FAILURE:
+
+  1. MICROSOFT 365 GROUPS GO TO GroupEditor.ps1, NOT Group-Manager-Editor.ps1.
+     The first version put GroupMailbox in the distribution-group row and it
+     failed live with Exchange's own words: "The current operation is not
+     supported on GroupMailbox." Group-Manager-Editor is built on
+     Get-/Set-DistributionGroup; a Microsoft 365 group needs
+     Get-/Set-UnifiedGroup. Get-Recipient reports these as 'GroupMailbox' -- a
+     word containing neither 'Unified' nor 'M365', and containing 'Mailbox'.
+
+  2. THE CALLER TELLS THE EDITOR WHICH SIDE, VIA -OnPrem. The caller is the one
+     that read IsDirSynced. The editor must never guess and must never fall back
+     to the other side when one fails.
+
+  3. THERE IS NO CATCH-ALL ROW, DELIBERATELY. A contact or a plain security
+     group has no second tool. A row that opened roughly the right thing would
+     make the feature look like it works. WHERE THERE IS NOTHING TO OPEN, THE
+     BUTTON GREYS OUT WITH A REASON.
+
+  4. SOFT-DELETED NEVER MATCHES ANY ROW. A deleted mailbox cannot be edited by
+     any of these tools, and handing one to an editor produces a "not found"
+     that reads like the tool is broken.
+
+TWO BUTTONS, TWO MEANINGS -- DO NOT LET THEM OVERLAP
+
+    Attributes   edits WHAT THE OBJECT IS   -- names, addresses, custom
+                 attributes. Cloud objects use the in-tool editor; on-premises
+                 objects go to AD-Lookup.
+    Open         opens WHAT THE OBJECT DOES -- the membership of a group, the
+                 delegations on a mailbox.
+
+An earlier version had a catch-all sending every on-premises object to
+AD-Lookup, which is what Attributes already did. Two buttons did the same thing
+on half the objects and left a hole on the other half. That is worse than
+either one alone.
+
+THE PARAMETER CONTRACT -- match these exactly or the hand-off breaks:
+
+    Group-Manager-Editor.ps1   -SmtpAddress <string>  -OnPrem <switch>
+    GroupEditor.ps1            -SmtpAddress <string>
+    MailboxPermissions.ps1     -SmtpAddress <string>  -Environment <string>
+                               -DomainController <string>
+    AD-Lookup.ps1              -SmtpAddress <string>   OPTIONAL SEED ONLY
+
+AD-Lookup's -SmtpAddress MUST NOT BE Mandatory. A mandatory parameter makes
+PowerShell prompt in the console window before the form appears. With nothing
+passed the tool behaves as it always has: empty box, cursor in it, waiting.
+
+ROUTE ONLY TO WHAT EXISTS. AD-Lookup is a later stage and may not be built yet.
+A row whose target script is absent must GREY THE BUTTON WITH A REASON NAMING
+THE MISSING TOOL -- never a silent no-op, and never a "file not found" dialog.
+
+--------------------------------------------------------------------------------
+WHAT IS BELOW, AND HOW TO USE IT
+--------------------------------------------------------------------------------
+
+  1  AuditUser.ps1              the real mailbox audit-log search
+  2  AuditSMB.ps1               the shared-mailbox version, with delegates
+  3  Unified-Lookup.ps1         the routing table lives at $script:HandOff
+  4  Group-Manager-Editor.ps1   hand-off target -- note -OnPrem
+  5  GroupEditor.ps1            hand-off target -- Microsoft 365 groups
+  6  MailboxPermissions.ps1     hand-off target -- runs in-process
+  7  AD-Lookup.ps1              hand-off target -- optional seed parameter
+
+THESE ARE REFERENCE IMPLEMENTATIONS, NOT A CODEBASE TO PASTE IN. The same rule
+as the rest of the pack applies: match the conventions, take the parts whose
+purpose is clear, and do not port anything you cannot explain. Where a comment
+contradicts your instinct, the comment is information -- most of them cost
+somebody a day.
+
+The originals come from a tenant with TWO Active Directory domains. Yours has
+ONE. Keep the table-driven shape; do not port cross-directory routing.
+
+--------------------------------------------------------------------------------
+DONE WHEN
+--------------------------------------------------------------------------------
+
+  [ ] Both audit tools return actual audit EVENTS from Search-UnifiedAuditLog,
+      paged through a session, with a working cancel.
+  [ ] A record whose AuditData will not parse degrades to flat fields rather
+      than throwing.
+  [ ] Both forms carry the three warnings: role required, 30+ minute lag,
+      180-day retention.
+  [ ] The shared-mailbox tool lists Full Access holders before the search and
+      makes delegate actions distinguishable from owner actions.
+  [ ] Both TOOLKIT-HELP blocks describe searching the audit log. The old
+      "settings report" wording is gone from both.
+  [ ] Unified Lookup: a synced distribution list opens Group-Manager-Editor
+      with -OnPrem; a cloud one opens it without; a Microsoft 365 group opens
+      GroupEditor; a mailbox on either side opens MailboxPermissions.
+  [ ] A contact greys the Open button and says why.
+  [ ] A soft-deleted object matches no row.
+  [ ] A row pointing at a tool that is not built yet greys and names it.
+  [ ] Routing is a table. Adding a destination is adding a row.
+  [ ] Verifier clean; audit rows on every hand-off; UNVERIFIED.md updated.
+
+Show me the $script:HandOff table and the audit paging function before wiring
+any UI. Those two are where the correctness lives.
+
+================================================================================
+REFERENCE CODE FOLLOWS
+================================================================================

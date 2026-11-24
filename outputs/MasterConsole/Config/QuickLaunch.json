@@ -1,0 +1,106 @@
+﻿[
+    {
+        "Section":  "AvePoint",
+        "Label":  "AvePoint Backup",
+        "Url":  "https://www.avepointonlineservices.com/#/my-services",
+        "Profile":  "Admin",
+        "Admin":  true,
+        "Note":  "AvePoint Online Services"
+    },
+    {
+        "Section":  "M365 Quick Links",
+        "Label":  "M365 Admin",
+        "Url":  "https://admin.microsoft.com",
+        "Profile":  "Admin",
+        "Admin":  true,
+        "Note":  "Microsoft 365 admin center"
+    },
+    {
+        "Section":  "M365 Quick Links",
+        "Label":  "Exchange Admin",
+        "Url":  "https://admin.exchange.microsoft.com",
+        "Profile":  "Admin",
+        "Admin":  true,
+        "Note":  "Exchange admin center"
+    },
+    {
+        "Section":  "M365 Quick Links",
+        "Label":  "Entra Admin",
+        "Url":  "https://entra.microsoft.com",
+        "Profile":  "Admin",
+        "Admin":  true,
+        "Note":  "Microsoft Entra admin center"
+    },
+    {
+        "Section":  "Express",
+        "Label":  "ServiceNow Queue",
+        "Url":  "https://expresspros.service-now.com",
+        "Profile":  "ServiceNow",
+        "Admin":  false,
+        "Note":  "Ticket queue"
+    },
+    {
+        "Section":  "M365 Quick Links",
+        "Label":  "Rooms",
+        "Url":  "https://portal.rooms.microsoft.com/24g6q9/rooms",
+        "Profile":  "Admin",
+        "Admin":  true,
+        "Note":  "Rooms Info"
+    },
+    {
+        "Section":  "M365 Quick Links",
+        "Label":  "Teams",
+        "Url":  "https://admin.teams.microsoft.com/dashboard",
+        "Profile":  "Admin",
+        "Admin":  true,
+        "Note":  "Teams"
+    },
+    {
+        "Section":  "M365 Quick Links",
+        "Label":  "SharePoint",
+        "Url":  "https://expresspros-https://expresspros-admin.sharepoint.com/_layouts/15/online/AdminHome.aspx#/home",
+        "Profile":  "Admin",
+        "Admin":  true,
+        "Note":  "SharePoint"
+    },
+    {
+        "Section":  "Express",
+        "Label":  "PagerDuty",
+        "Url":  "https://expresspros.pagerduty.com/users/P2J6WOC",
+        "Profile":  "ServiceNow",
+        "Admin":  false,
+        "Note":  "PagerDuty"
+    },
+    {
+        "Section":  "Express",
+        "Label":  "Thycoticss",
+        "Url":  "https://thycoticss.expresspros.com/SecretServer/app/#/dashboard/tabs",
+        "Profile":  "ServiceNow",
+        "Admin":  false,
+        "Note":  "Secrets"
+    },
+    {
+        "Section":  "Express",
+        "Label":  "Lattice",
+        "Url":  "https://expresspros.latticehq.com",
+        "Profile":  "ServiceNow",
+        "Admin":  false,
+        "Note":  "Lattice"
+    },
+    {
+        "Section":  "Express",
+        "Label":  "New SNow Tast",
+        "Url":  "https://expresspros.service-now.com/sp?sysparm_stack=no",
+        "Profile":  "ServiceNow",
+        "Admin":  false,
+        "Note":  "New Task"
+    },
+    {
+        "Section":  "Express",
+        "Label":  "Header Analyzer",
+        "Url":  "https://mxtoolbox.com/EmailHeaders.aspx",
+        "Profile":  "ServiceNow",
+        "Admin":  false,
+        "Note":  "Headers"
+    }
+]

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Server Health - Contoso - 2026-09-16_0930</title>
+<style>
+  :root { --ok:#2e9e5b; --warn:#e0a100; --crit:#d64545; --ink:#1f2933; --muted:#6b7280; --line:#e6e9ee; --card:#ffffff; --bg:#f4f6f9; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px 36px; background:var(--bg); color:var(--ink); font:16px/1.4 "Segoe UI", Arial, sans-serif; }
+  h1 { margin:0; font-size:34px; font-weight:600; letter-spacing:-0.2px; }
+  .sub { color:var(--muted); font-size:16px; margin-top:4px; }
+  .head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px; }
+  .headline { font-size:22px; font-weight:600; padding:10px 16px; border-radius:8px; color:#fff; }
+  .headline.ok { background:var(--ok); } .headline.warn { background:var(--warn); } .headline.crit { background:var(--crit); }
+  .grid { display:grid; grid-template-columns: 220px repeat(4, 1fr); gap:16px; margin-bottom:22px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .kpi .n { font-size:40px; font-weight:700; line-height:1; }
+  .kpi .l { color:var(--muted); font-size:15px; margin-top:6px; }
+  .kpi .l2 { display:block; margin-top:3px; }
+  .kpi.ok .n { color:var(--ok); } .kpi.warn .n { color:var(--warn); } .kpi.crit .n { color:var(--crit); }
+  .donut { width:170px; height:170px; display:block; margin:0 auto; }
+  .donut-n { font-size:7.5px; font-weight:700; text-anchor:middle; fill:var(--ink); }
+  .donut-l { font-size:3.2px; text-anchor:middle; fill:var(--muted); }
+  h2 { font-size:19px; margin:0 0 10px; font-weight:600; }
+  ul.attn { list-style:none; margin:0 0 22px; padding:0; }
+  ul.attn li { padding:10px 14px; border-left:6px solid var(--line); background:var(--card); border-radius:6px; margin-bottom:6px; font-size:16px; }
+  ul.attn li.crit { border-left-color:var(--crit); } ul.attn li.warn { border-left-color:var(--warn); } ul.attn li.ok { border-left-color:var(--ok); }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; font-size:15px; }
+  th { text-align:left; font-weight:600; color:var(--muted); font-size:13px; text-transform:uppercase; letter-spacing:.04em; padding:10px 12px; border-bottom:1px solid var(--line); background:#fafbfc; }
+  td { padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  tr:last-child td { border-bottom:0; }
+  td.srv { font-weight:600; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:999px; color:#fff; font-size:13px; font-weight:600; }
+  .pill.ok { background:var(--ok); } .pill.warning { background:var(--warn); } .pill.critical { background:var(--crit); } .pill.muted-pill { background:#8a94a6; }
+  table.upd { margin-bottom:22px; } table.upd td:nth-child(4) { max-width:520px; }
+  .muted { color:var(--muted); } .warn-t { color:#b07800; font-weight:600; } .ok-t { color:var(--ok); font-weight:600; }
+  .barcell { min-width:220px; }
+  .bar { height:10px; background:var(--line); border-radius:5px; overflow:hidden; }
+  .fill { height:100%; }
+  .bar-l { display:block; font-size:12.5px; color:var(--muted); margin-top:3px; }
+  .foot { color:var(--muted); font-size:13px; margin-top:16px; }
+  @media print {
+    @page { size: landscape; margin: 10mm; }
+    body { padding:0; background:#fff; font-size:13px; }
+    h1 { font-size:26px; } .headline { font-size:17px; } .kpi .n { font-size:30px; }
+    .grid { gap:10px; margin-bottom:12px; } .card { padding:10px 12px; }
+    .donut { width:120px; height:120px; }
+    table { font-size:12px; } td, th { padding:5px 8px; }
+    ul.attn li { padding:6px 10px; font-size:13px; }
+    .foot { margin-top:8px; }
+  }
+</style></head>
+<body>
+<div class="head">
+  <div><h1>Server Health</h1><div class="sub">Contoso &middot; 9 server(s) &middot; checked Wednesday 16 September 2026, 09:30</div></div>
+  <div class="headline crit">1 server(s) need action now</div>
+</div>
+<div class="grid">
+  <div class="card"><svg viewBox="0 0 42 42" class="donut"><circle cx="21" cy="21" r="15.9155" fill="none" stroke="#e6e9ee" stroke-width="6"></circle>
+<circle cx="21" cy="21" r="15.9155" fill="none" stroke="#2e9e5b" stroke-width="6" stroke-dasharray="66.67 33.33" stroke-dashoffset="25"></circle>
+<circle cx="21" cy="21" r="15.9155" fill="none" stroke="#e0a100" stroke-width="6" stroke-dasharray="22.22 77.78" stroke-dashoffset="-41.67"></circle>
+<circle cx="21" cy="21" r="15.9155" fill="none" stroke="#d64545" stroke-width="6" stroke-dasharray="11.11 88.89" stroke-dashoffset="-63.89"></circle>
+<text x="21" y="20.5" class="donut-n">6/9</text><text x="21" y="26" class="donut-l">healthy</text></svg></div>
+  <div class="card kpi crit"><div class="n">1</div><div class="l">Critical</div></div>
+  <div class="card kpi warn"><div class="n">2</div><div class="l">Warning</div></div>
+  <div class="card kpi warn"><div class="n">5</div><div class="l">Updates missing &middot; 2 critical, 3 important &middot; oldest 132 d</div></div>
+  <div class="card kpi warn"><div class="n">61 days</div><div class="l">Oldest patch age<span class="l2">Longest uptime 7 days</span></div></div>
+</div>
+<h2>Needs attention</h2>
+<ul class="attn">
+<li class="crit"><b>EXCH02</b> &mdash; D: has 6.1 GB free (4.2%); 3 update(s) missing (1 critical, 1 important), oldest 132 days</li>
+<li class="warn"><b>DC03</b> &mdash; last patched 61 days ago; 2 update(s) missing</li>
+<li class="warn"><b>FS01</b> &mdash; C: has 18.4 GB free (12.8%)</li></ul>
+<h2>Missing updates &middot; 5 across the fleet &middot; 2 critical, 3 important &middot; oldest 132 d</h2>
+<table class="upd">
+<thead><tr><th>Server</th><th>Severity</th><th>KB</th><th>Update</th><th>Released</th><th>Age</th></tr></thead>
+<tbody>
+<tr><td class="srv">EXCH01</td><td><span class="pill critical">Critical</span></td><td>KB5041580</td><td>2024-08 Cumulative Update for Windows Server 2019 (KB5041580)</td><td>2026-05-07</td><td class="warn-t">132 d</td></tr>
+<tr><td class="srv">DC02</td><td><span class="pill critical">Critical</span></td><td>KB5040437</td><td>2026-07 Security Update for Windows Server 2022 (KB5040437)</td><td>2026-07-14</td><td class="warn-t">64 d</td></tr>
+<tr><td class="srv">EXCH01</td><td><span class="pill warning">Important</span></td><td>KB5046615</td><td>Security Update For Exchange Server 2019 CU14 SU (KB5046615)</td><td>2026-08-11</td><td class="">36 d</td></tr>
+<tr><td class="srv">FS01</td><td><span class="pill warning">Important</span></td><td>KB5041160</td><td>2026-08 Cumulative Update for Windows Server 2022 (KB5041160)</td><td>2026-08-11</td><td class="">36 d</td></tr>
+<tr><td class="srv">DC02</td><td><span class="pill warning">Important</span></td><td>KB5043051</td><td>2026-09 Servicing Stack Update for Windows Server 2022 (KB5043051)</td><td>2026-09-08</td><td class="">8 d</td></tr>
+</tbody>
+</table>
+<h2>Every server</h2>
+<table>
+<thead><tr><th>Server</th><th>Status</th><th>OS</th><th>Uptime</th><th>Last patch</th><th>Missing</th><th>Worst drive (free)</th><th>Exchange</th></tr></thead>
+<tbody>
+<tr><td class="srv">DC01</td><td><span class="pill ok">OK</span></td><td class="muted">Windows Server 2022</td><td>34 d</td><td class="">2026-09-10 <span class="muted">(6 d)</span></td><td class="ok-t">0</td><td class="barcell"><div class="bar"><div class="fill" style="width:44.1%;background:#2e9e5b"></div></div><span class="bar-l">C: 88.2 GB free (44.1%)</span></td><td>&ndash;</td></tr>
+<tr><td class="srv">DC02</td><td><span class="pill ok">OK</span></td><td class="muted">Windows Server 2022</td><td>34 d</td><td class="">2026-09-10 <span class="muted">(6 d)</span></td><td class="ok-t">0</td><td class="barcell"><div class="bar"><div class="fill" style="width:45.5%;background:#2e9e5b"></div></div><span class="bar-l">C: 91.0 GB free (45.5%)</span></td><td>&ndash;</td></tr>
+<tr><td class="srv">DC03</td><td><span class="pill warning">Warning</span></td><td class="muted">Windows Server 2019</td><td>188 d</td><td class="warn-t">2026-07-17 <span class="muted">(61 d)</span></td><td class="warn-t">2</td><td class="barcell"><div class="bar"><div class="fill" style="width:33.6%;background:#2e9e5b"></div></div><span class="bar-l">C: 40.3 GB free (33.6%)</span></td><td>&ndash;</td></tr>
+<tr><td class="srv">EXCH01</td><td><span class="pill ok">OK</span></td><td class="muted">Windows Server 2019</td><td>12 d</td><td class="">2026-09-10 <span class="muted">(6 d)</span></td><td class="ok-t">0</td><td class="barcell"><div class="bar"><div class="fill" style="width:41.2%;background:#2e9e5b"></div></div><span class="bar-l">E: 412.0 GB free (41.2%)</span></td><td>Exchange 2019 CU15</td></tr>
+<tr><td class="srv">EXCH02</td><td><span class="pill critical">Critical</span></td><td class="muted">Windows Server 2019</td><td>97 d</td><td class="">2026-08-13 <span class="muted">(34 d)</span></td><td class="warn-t">3</td><td class="barcell"><div class="bar"><div class="fill" style="width:4.2%;background:#d64545"></div></div><span class="bar-l">D: 6.1 GB free (4.2%)</span></td><td>Exchange 2019 CU15</td></tr>
+<tr><td class="srv">FS01</td><td><span class="pill warning">Warning</span></td><td class="muted">Windows Server 2022</td><td>22 d</td><td class="">2026-09-10 <span class="muted">(6 d)</span></td><td class="ok-t">0</td><td class="barcell"><div class="bar"><div class="fill" style="width:12.8%;background:#e0a100"></div></div><span class="bar-l">C: 18.4 GB free (12.8%)</span></td><td>&ndash;</td></tr>
+<tr><td class="srv">PRINT01</td><td><span class="pill ok">OK</span></td><td class="muted">Windows Server 2019</td><td>45 d</td><td class="">2026-09-10 <span class="muted">(6 d)</span></td><td class="ok-t">0</td><td class="barcell"><div class="bar"><div class="fill" style="width:50.6%;background:#2e9e5b"></div></div><span class="bar-l">C: 60.7 GB free (50.6%)</span></td><td>&ndash;</td></tr>
+<tr><td class="srv">SQL01</td><td><span class="pill ok">OK</span></td><td class="muted">Windows Server 2022</td><td>9 d</td><td class="">2026-09-10 <span class="muted">(6 d)</span></td><td class="ok-t">0</td><td class="barcell"><div class="bar"><div class="fill" style="width:38.8%;background:#2e9e5b"></div></div><span class="bar-l">D: 310.5 GB free (38.8%)</span></td><td>&ndash;</td></tr>
+<tr><td class="srv">WEB01</td><td><span class="pill ok">OK</span></td><td class="muted">Windows Server 2022</td><td>9 d</td><td class="">2026-09-10 <span class="muted">(6 d)</span></td><td class="ok-t">0</td><td class="barcell"><div class="bar"><div class="fill" style="width:46.0%;background:#2e9e5b"></div></div><span class="bar-l">C: 55.2 GB free (46.0%)</span></td><td>&ndash;</td></tr></tbody>
+</table>
+<div class="foot">Thresholds: drive warning at 15% or 20 GB free, critical at 10% or 10 GB; patches stale after 45 days. Generated by the Admin Console Server Health tool. Four CSVs with the full detail carry the same timestamp in the reports folder.</div>
+</body></html>

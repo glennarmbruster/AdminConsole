@@ -1,0 +1,51 @@
+﻿{
+  "_comment": [
+    "GCEARTH -- cloud-only test tenant. No Active Directory, no on-premises Exchange.",
+    "",
+    "THIS FILE IS THE TEST. OnPremAD and OnPremExchange are false, and Directories",
+    "is empty, so every tool the capability scanner classifies as needing AD or",
+    "on-premises Exchange should be ABSENT from the console -- not greyed out.",
+    "Anything that still appears, or appears and then fails, is a finding: see",
+    "TESTME-CloudOnly.txt.",
+    "",
+    "MicrosoftGraph is false to start with on purpose. Turn it on in Tenant Manager",
+    "once the Graph app registration is in place and the five Graph tools should",
+    "appear without anything else changing.",
+    "",
+    "Copy to Config\\Tenants\\gcearth.json on the install under test."
+  ],
+  "TenantName": "GC Earth",
+  "PrimaryDomain": "gcearth.com",
+  "OnMicrosoftDomain": "",
+  "Capabilities": {
+    "ExchangeOnline": true,
+    "SharePointOnline": true,
+    "OnPremAD": false,
+    "OnPremExchange": false,
+    "Pim": false,
+    "PimTimer": false,
+    "MicrosoftGraph": false
+  },
+  "Directories": [],
+  "OnPremExchange": {
+    "ServerUri": "",
+    "PreferredDomainController": ""
+  },
+  "Pim": {
+    "DurationHours": 4,
+    "GroupsEligibleUrl": "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadgroup",
+    "RolesEligibleUrl": "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadmigratedroles",
+    "GroupsActiveUrl": "",
+    "RolesActiveUrl": ""
+  },
+  "Graph": {
+    "ClientId": "",
+    "TenantId": ""
+  },
+  "LicenseGroups": [],
+  "SharePoint": {
+    "AdminUrl": "",
+    "MySiteHost": ""
+  },
+  "Theme": ""
+}

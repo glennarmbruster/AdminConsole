@@ -1,0 +1,18 @@
+﻿{
+    "ReportsPath":  "E:\\Scripts\\M365\\AdminConsole\\reports",
+    "LogPath":  "E:\\Scripts\\M365\\AdminConsole\\Logs",
+    "RetryQueuePath":  "E:\\Scripts\\M365\\AdminConsole\\RetryQueue",
+    "OperatorEmail":  "glenn.armbruster@expresspros.com",
+    "ConsoleTitle":  "Express Admin Console",
+    "ConsoleTitleFont":  "Baskerville Old Face",
+    "ConsoleButtonStyle":  "Enhanced",
+    "ConsoleIcons":  "",
+    "ConsoleCorners":  "Rounded",
+    "ConsoleDialogStyle":  "Themed",
+    "ConsoleHeaderOperator":  "",
+    "BrowserProfiles":  {
+                            "Admin":  "Admin",
+                            "GWA":  "GWA",
+                            "ServiceNow":  "ServiceNow"
+                        }
+}

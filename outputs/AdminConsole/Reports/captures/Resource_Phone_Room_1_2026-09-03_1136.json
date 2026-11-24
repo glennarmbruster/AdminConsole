@@ -1,0 +1,90 @@
+﻿{
+    "CapturedAt":  "2026-09-03T11:36:09",
+    "SourceIdentity":  "PhoneRoom1@expresspros.com",
+    "SourceDisplayName":  "Phone Room 1",
+    "RecipientTypeDetails":  "RoomMailbox",
+    "ResourceCapacity":  2,
+    "HiddenFromGAL":  false,
+    "CustomAttributes":  {
+                             "CustomAttribute3":  "CN=Phone Room 1,OU=Resource Mailbox,OU=Accounts,DC=expresspersonnel,DC=com"
+                         },
+    "CalendarProcessing":  {
+                               "AutomateProcessing":  "AutoAccept",
+                               "AllowConflicts":  false,
+                               "BookingWindowInDays":  365,
+                               "MaximumDurationInMinutes":  480,
+                               "MinimumDurationInMinutes":  0,
+                               "AllowRecurringMeetings":  true,
+                               "EnforceSchedulingHorizon":  true,
+                               "ScheduleOnlyDuringWorkHours":  false,
+                               "ConflictPercentageAllowed":  0,
+                               "MaximumConflictInstances":  0,
+                               "ForwardRequestsToDelegates":  true,
+                               "DeleteAttachments":  true,
+                               "DeleteComments":  true,
+                               "RemovePrivateProperty":  true,
+                               "DeleteSubject":  true,
+                               "AddOrganizerToSubject":  true,
+                               "DeleteNonCalendarItems":  true,
+                               "TentativePendingApproval":  true,
+                               "EnableResponseDetails":  true,
+                               "OrganizerInfo":  true,
+                               "ResourceDelegates":  [
+
+                                                     ],
+                               "RequestOutOfPolicy":  [
+
+                                                      ],
+                               "AllRequestOutOfPolicy":  false,
+                               "BookInPolicy":  [
+
+                                                ],
+                               "AllBookInPolicy":  true,
+                               "RequestInPolicy":  [
+
+                                                   ],
+                               "AllRequestInPolicy":  false,
+                               "AddAdditionalResponse":  false,
+                               "AdditionalResponse":  null,
+                               "RemoveOldMeetingMessages":  true,
+                               "AddNewRequestsTentatively":  true,
+                               "ProcessExternalMeetingMessages":  false,
+                               "RemoveForwardedMeetingNotifications":  false,
+                               "EnforceCapacity":  false
+                           },
+    "Place":  {
+                  "Building":  "HQ",
+                  "Capacity":  2,
+                  "Floor":  null,
+                  "FloorLabel":  null,
+                  "Label":  "",
+                  "Tags":  [
+
+                           ],
+                  "AudioDeviceName":  null,
+                  "VideoDeviceName":  null,
+                  "DisplayDeviceName":  null,
+                  "IsWheelChairAccessible":  false,
+                  "MTREnabled":  false,
+                  "Street":  "9701 Boardwalk Blvd",
+                  "City":  "Oklahoma City",
+                  "State":  "Oklahoma",
+                  "PostalCode":  "73162",
+                  "CountryOrRegion":  "United States",
+                  "Phone":  null,
+                  "GeoCoordinates":  null
+              },
+    "CalendarPermissions":  [
+
+                            ],
+    "Regional":  {
+
+                 },
+    "RoomLists":  [
+                      "AllHQRooms@ExpressPros.com"
+                  ],
+    "OnPremOU":  "OU=Resource Mailbox,OU=Accounts,DC=expresspersonnel,DC=com",
+    "OnPrem":  {
+
+               }
+}

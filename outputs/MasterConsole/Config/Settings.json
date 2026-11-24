@@ -1,0 +1,13 @@
+﻿{
+    "ReportsPath":  "E:\\Scripts\\M365\\AdminConsole\\Reports",
+    "LogPath":  "E:\\Scripts\\M365\\AdminConsole\\Logs",
+    "DisableRequestPath":  "E:\\Scripts\\M365\\DisabledRequests",
+    "OperatorEmail":  "glenn.armbruster@expresspros.com",
+    "SpoAdminUrl":  "",
+    "ExchangeServerUri":  "",
+    "BrowserProfiles":  {
+                            "Admin":  "Admin",
+                            "GWA":  "GWA",
+                            "ServiceNow":  "ServiceNow"
+                        }
+}

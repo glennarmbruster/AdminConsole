@@ -1,0 +1,28 @@
+shipGC -- scripts that belong ONLY to this tenant.
+
+WHY THIS FOLDER EXISTS
+  outputs\shipGC is emptied every time a drop is collected, so without this
+  there is no lasting copy of a tenant-only script anywhere. This is the
+  record; outputs\shipGC is the outbox.
+
+WHAT LIVES HERE
+  Scripts for this tenant and no other. A script that belongs everywhere
+  stays in AdminConsole\ and is copied to all three outboxes.
+
+THE COPY RULE
+  Belongs everywhere : AdminConsole\Name.ps1
+                       + outputs\shipEX + outputs\shipFH + outputs\shipGC
+  One tenant only    : AdminConsole\shipGC\Name.ps1
+                       + outputs\shipGC
+
+LAYOUT IS FLAT AT THE FAR END
+  The subfolder exists in this source tree only. Files are copied flat into
+  outputs\shipGC and land flat in the tenant's install, so nothing here needs
+  to know it is in a subfolder -- no $PSScriptRoot changes, no Tools.json
+  path changes.
+
+EVERY RECURSIVE SWEEP SKIPS THIS FOLDER
+  Publish-Toolkit, Deploy, Test-Toolkit and ParkInPlace all filter it out via
+  Test-ToolkitArchivePath in Common.ps1. Publish-Toolkit is the one that
+  matters: it recurses the whole toolkit root, and without the filter a
+  script in here would be published into the WRONG tenant's drop.

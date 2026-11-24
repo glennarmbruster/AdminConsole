@@ -1,0 +1,4399 @@
+﻿#Requires -Version 5.1
+# TOOLKIT-VARIANT: OnPrem
+# TOOLKIT-REQUIRES: OwnProcess
+# TOOLKIT-HELP-RUNS: the on-premises Exchange servers listed in Tenant.json under OnPremExchange.Servers. It RESTARTS them; Simulate walks the whole pipeline and touches nothing.
+# TOOLKIT-HELP-BEGIN
+# Post-patch reboots for the on-premises Exchange servers, one site at a time.
+#
+# It opens with a read-only scan and tells you which servers are PATCHED and
+# waiting for a restart, so nothing is rebooted on a guess. Tick the ones you
+# want: at most one server per site runs, and the next server in a site is
+# released only when the previous one is green on every check.
+#
+# SIMULATE IS ON WHEN THE WINDOW OPENS AND SHOULD STAY ON FOR THE FIRST RUN.
+# It walks the entire pipeline, writes the full step log, and skips every
+# state-changing call. Read that log, agree with the plan, then turn it off.
+#
+# A MAILBOX SERVER is put into DAG maintenance -- transport drained, messages
+# redirected, the cluster core group moved off, activation blocked, every
+# active database moved to another copy, then ServerWideOffline -- and the
+# reboot does NOT happen until the server provably hosts zero mounted
+# databases and no longer owns the cluster. Afterwards maintenance is reversed
+# in the opposite order and the databases and the cluster group are moved back.
+#
+# AN EDGE TRANSPORT SERVER has no DAG, so it drains transport, waits for the
+# queues, reboots, and is checked on services and queues.
+#
+# THE SERVERS, THEIR SITES AND THEIR ROLES COME FROM Tenant.json, never from
+# this file. Set OnPremExchange.Servers in Tenant Manager, one entry per
+# server, as NAME:Site:Role -- for example SRV01:SiteA:Mailbox. A bare NAME
+# still works: the site is then read from the leading letters-and-digits of
+# the name and the role is assumed to be Mailbox. DECLARE BOTH. A server
+# whose site is guessed wrong is a server this tool will happily reboot
+# alongside its own partner.
+#
+# It needs WinRM to every server, local administrator rights on them, and an
+# Exchange RBAC role that grants the maintenance cmdlets. It opens its own
+# remote Exchange shell against a server that is NOT being rebooted, so it
+# does not use, and does not need, the console's on-premises session.
+# TOOLKIT-HELP-END
+<#
+    ServerReboot.ps1
+    Post-patch reboots for the on-premises Exchange servers, with DAG
+    maintenance mode, database and cluster fail-over, and a colour coded grid
+    of health checks that must all go green before the next server in the same
+    site is allowed to reboot.
+
+    Author   : Glenn Armbruster
+    Revised  : 2026-09-17
+
+    2026-09-17  Rebuilt as an Admin Console tool. The reboot ENGINE -- the
+                worker preamble, the scan, the reboot pipeline, the hard gate
+                and the site scheduler -- is carried across unchanged, because
+                the order of those steps IS the safety property and it has
+                been run against production. What was rebuilt is everything
+                around it:
+
+                  - the server list, their sites and their roles now come from
+                    Tenant.json through Get-TenantExchangeServerList instead of
+                    being literals in the file (ARCHITECTURE 61d);
+                  - styling comes from the shared Set-ConsoleTheme rather than
+                    a private theme library, so this window matches every other
+                    tool and follows the operator's theme;
+                  - Add-ToolHelpButton puts the '?' and the keyboard defaults
+                    in the same place as everywhere else;
+                  - every dialog goes through Show-ToolDialog and every event
+                    handler through Show-HandlerError;
+                  - the activity log lands in Get-LogPath, exports default to
+                    Get-ReportPath, and every reboot writes a row to the audit
+                    log through Write-CompletedLog / Write-FailedLog
+                    (ARCHITECTURE 61e).
+
+.SYNOPSIS
+    Full screen GUI for post-patch reboots of the on-premises Exchange
+    servers, with DAG maintenance mode, database and cluster fail-over, and a
+    colour coded grid of health checks that must all go green before the next
+    server in the same site is allowed to reboot.
+
+.DESCRIPTION
+    The servers this tool manages, the site each one belongs to and whether it
+    is a DAG member or an Edge Transport server are all read from Tenant.json
+    -- OnPremExchange.Servers, edited in Tenant Manager. Nothing about this
+    organisation is written into this script.
+
+    On load it scans every configured server and shows which ones are PATCHED
+    and waiting for a reboot, so nothing is rebooted on a guess.
+
+    THE SITE RULE
+    -------------
+    Never two servers of the same site at once. Tick as many servers as you
+    like: the scheduler runs at most one per site, so one server from each site
+    goes together and the rest of that site waits in a queue. The next server
+    in a site is only released once the previous one is GREEN on every check,
+    so the rule holds even if you walk away from the screen.
+
+    THE SITE IS WHATEVER Tenant.json SAYS IT IS. That is the whole reason the
+    rule can be trusted: a site guessed from a hostname is a guess, and the
+    consequence of guessing wrong here is two DAG partners restarting at once.
+    Declare it -- NAME:Site:Role in Tenant Manager.
+
+    "Allow one Mailbox + one Edge per site" relaxes that to two per site (never
+    two Mailbox servers and never two Edge servers of the same site). It is off
+    by default because one at a time is the safe answer.
+
+    WHAT HAPPENS TO A MAILBOX SERVER
+    --------------------------------
+      1. Pre-flight     reachable, reboot really is pending, DAG has quorum to
+                        spare, every other copy of the databases it hosts is
+                        healthy. Records which databases are ACTIVE here and
+                        whether this node owns the cluster core group (PAM).
+      2. Maintenance    HubTransport draining, messages redirected, PAM moved
+                        off, cluster node suspended, activation blocked, every
+                        active database moved to the other server in the site,
+                        then ServerWideOffline. Hard gate: the reboot does not
+                        happen until the server hosts zero active databases and
+                        does not own the cluster group.
+      3. Reboot         restart, wait for it to go down, wait for it to come
+                        back with a new boot time.
+      4. Post checks    Exchange services, database copies, transport queues,
+                        cluster / component state - retried until they settle.
+      5. Exit           maintenance mode reversed in the opposite order.
+      6. Restore        the databases that were active before are moved back,
+                        and the cluster group is moved back if this node had it.
+      7. Verify         Test-ServiceHealth, Test-ReplicationHealth,
+                        Test-MapiConnectivity, queues, copy health. All green
+                        releases the next server in the site.
+
+    An Edge Transport server has no DAG, so it drains transport, waits for the
+    queues to empty, reboots, and is checked on services and queues.
+
+    Nothing is hidden: every step is a row in the Step Log, every run can be
+    exported to CSV or a text report, an activity transcript is written to the
+    toolkit's Logs folder, and every server that is actually restarted gets a
+    row in CompletedTasks.csv.
+
+.PARAMETER Servers
+    Overrides the server list for one run. Empty -- the normal case -- reads
+    OnPremExchange.Servers from Tenant.json. Site and role come from the
+    declared Site and Role on each entry; for a bare name the site falls back
+    to the leading letters-and-digits of the name and the role to Mailbox.
+
+.PARAMETER ExchangeConnectionServers
+    Overrides which servers may host the remote Exchange PSSession. Empty
+    reads the Mailbox-role servers from the same tenant list. The tool always
+    picks one that is not itself being rebooted.
+
+.PARAMETER QueueThreshold
+    A transport queue at or below this many messages counts as drained.
+
+.PARAMETER CopyQueueThreshold
+    Highest acceptable CopyQueueLength on a database copy.
+
+.PARAMETER ReplayQueueThreshold
+    Highest acceptable ReplayQueueLength on a database copy.
+
+.PARAMETER RebootTimeoutMinutes
+    How long to wait for a server to come back before calling the reboot failed.
+
+.PARAMETER SettleTimeoutMinutes
+    How long the post-reboot checks are retried before they are called failed.
+
+.PARAMETER DrainTimeoutMinutes
+    How long to wait for transport queues to drain during maintenance.
+
+.PARAMETER HotfixMaxAgeDays
+    An update installed within this many days counts as "recently patched".
+
+.EXAMPLE
+    Launched from the Admin Console. It is not supported standalone.
+
+.NOTES
+    Reboots production Exchange servers. Every destructive action is behind a
+    typed confirmation, and Simulate mode walks the whole pipeline without
+    touching anything.
+#>
+
+# NO [CmdletBinding()], AND THAT IS DELIBERATE.
+#
+# In an advanced script the param defaults are evaluated before $PSScriptRoot
+# is populated, so a default that wants to read Tenant.json or the Logs folder
+# gets neither. The list and the paths are resolved below instead, where both
+# Common.ps1 and $PSScriptRoot are available.
+param(
+    # Passed by the Admin Console to every tool it launches. Accepted and
+    # mostly ignored -- this tool acts on servers, not on a mailbox -- but
+    # -Environment is forwarded to the audit log, and declaring all three is
+    # the contract: the console passes only what a script declares.
+    [string]$SmtpAddress,
+    [string]$Environment,
+    [string]$DomainController,
+
+    [string[]]$Servers = @(),
+
+    [string[]]$ExchangeConnectionServers = @(),
+
+    [ValidateRange(0, 100000)]
+    [int]$QueueThreshold = 50,
+
+    [ValidateRange(0, 100000)]
+    [int]$CopyQueueThreshold = 10,
+
+    [ValidateRange(0, 100000)]
+    [int]$ReplayQueueThreshold = 10,
+
+    [ValidateRange(5, 240)]
+    [int]$RebootTimeoutMinutes = 30,
+
+    [ValidateRange(1, 240)]
+    [int]$SettleTimeoutMinutes = 20,
+
+    [ValidateRange(1, 240)]
+    [int]$DrainTimeoutMinutes = 10,
+
+    [ValidateRange(1, 365)]
+    [int]$HotfixMaxAgeDays = 30,
+
+    [string]$WorkFolder
+)
+
+#region Load Common -------------------------------------------------------------
+# WALK UP FOR Common.ps1 rather than assuming this file sits beside it, so the
+# tool still loads from a One-Off or Temp sub-folder. Same loader as
+# ServerHealth.ps1.
+$root = $PSScriptRoot
+while ($root -and -not (Test-Path -LiteralPath (Join-Path $root 'Common.ps1'))) {
+    $parent = Split-Path -Parent $root
+    if (-not $parent -or $parent -eq $root) { $root = ''; break }
+    $root = $parent
+}
+if (-not $root) { throw "Common.ps1 not found above '$PSScriptRoot'." }
+. (Join-Path $root 'Common.ps1')
+#endregion
+
+if (-not (Test-ConsoleLaunch)) { return }
+
+# WinForms needs a single-threaded apartment. The console launches this tool
+# into its own STA process (TOOLKIT-REQUIRES: OwnProcess), so this only ever
+# fires for a shell that was started -MTA by hand.
+if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA' -and $PSCommandPath) {
+    Start-Process -FilePath (Get-Process -Id $PID).Path `
+        -ArgumentList '-Sta', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"" | Out-Null
+    return
+}
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# DPI AWARENESS AND VISUAL STYLES ARE COMMON.PS1'S JOB. It calls
+# Enable-ToolkitDpiAwareness at the bottom of the file, and Set-ConsoleTheme
+# sets AutoScaleDimensions / AutoScaleMode on the form before its handle
+# exists. A private SetProcessDPIAware here would be a second answer to the
+# same question, and the second one to run loses silently.
+
+# WHERE THE FILES GO. Both from the toolkit's helpers, never a literal
+# (ARCHITECTURE 61e): -WorkFolder still overrides the activity transcript for
+# a one-off run, and the export dialog opens in the reports folder so Report
+# Browser finds what this tool writes.
+if (-not $WorkFolder) {
+    try { $WorkFolder = Get-LogPath } catch { $WorkFolder = $PSScriptRoot }
+}
+
+# --- Theme --------------------------------------------------------------------
+# COLOURS THAT CARRY MEANING ARE NOT THEMED, AND THAT IS THE RULE THE SHARED
+# THEME ITSELF FOLLOWS (Set-ConsoleTheme's 'NoTheme' opt-out exists for
+# exactly this). Green/amber/red here are the verdict on a production mailbox
+# server; a theme that recoloured them could disguise a red as decoration.
+#
+# So the four washes are fixed, and the SURFACE colours are taken from the
+# operator's theme, which is what makes the window match the rest of the
+# console. The text drawn on a wash is forced to a dark ink for the same
+# reason: under a dark theme the inherited near-white foreground would be
+# invisible on a pastel green cell.
+function Get-ToolThemeColor {
+    param(
+        [Parameter(Mandatory)][string]$Role,
+        [Parameter(Mandatory)][int]$R,
+        [Parameter(Mandatory)][int]$G,
+        [Parameter(Mandatory)][int]$B
+    )
+
+    $fallback = [System.Drawing.Color]::FromArgb($R, $G, $B)
+    try {
+        $theme = Get-ConsoleTheme
+        if (-not $theme) { return $fallback }
+        $c = ConvertTo-ThemeColor $theme.$Role
+        if ($c) { return $c }
+    } catch { }
+    return $fallback
+}
+
+$clrForm  = Get-ToolThemeColor 'FormBack'  240 240 240
+$clrPanel = Get-ToolThemeColor 'PanelBack' 255 255 255
+$clrText  = Get-ToolThemeColor 'FormText'   50  50  50
+$clrMuted = Get-ToolThemeColor 'GroupText'  90  90  90
+
+# The status washes, and the ink that has to stay readable on them.
+$clrGood    = [System.Drawing.Color]::FromArgb(200, 255, 200)
+$clrWarn    = [System.Drawing.Color]::FromArgb(255, 245, 200)
+$clrBad     = [System.Drawing.Color]::FromArgb(255, 200, 200)
+$clrIdle    = [System.Drawing.Color]::FromArgb(242, 242, 242)
+$clrWashInk = [System.Drawing.Color]::FromArgb(50, 50, 50)
+
+# ONE FONT FAMILY, AND IT IS THE THEME'S. Sizes stay as they were -- 9 for the
+# body, bold 10 for headings, the theme's mono face for the log panes.
+$uiFace   = 'Segoe UI'
+$monoFace = 'Consolas'
+try {
+    $theme = Get-ConsoleTheme
+    if ($theme) {
+        if ("$($theme.FontFamily)".Trim())   { $uiFace   = "$($theme.FontFamily)".Trim() }
+        if ("$($theme.MonoFamily)".Trim())   { $monoFace = "$($theme.MonoFamily)".Trim() }
+    }
+} catch { }
+$fontUI     = New-Object System.Drawing.Font($uiFace, 9)
+$fontUIBold = New-Object System.Drawing.Font($uiFace, 10, [System.Drawing.FontStyle]::Bold)
+$fontMono   = New-Object System.Drawing.Font($monoFace, 9)
+
+# --- Severity -----------------------------------------------------------------
+function Get-Severity {
+    <#
+    .SYNOPSIS
+        Any status word -> Ok / Warn / Bad / Idle, which is what drives the wash.
+    .DESCRIPTION
+        One mapping decides the grid colour, the row verdict and the Severity
+        column in the CSV. A colour that only exists on screen is lost the
+        moment the run is exported, which is exactly when somebody needs to
+        prove the checks were green before the next server went down.
+    #>
+    param([string]$Status)
+
+    switch -Regex ([string]$Status) {
+        '^\s*$'                                              { return 'Idle' }
+        '^(-|n/a|N/A|SKIPPED|NOT NEEDED|PENDING|QUEUED|NONE)' { return 'Idle' }
+        # "RUNNING..." (a step in flight) has to be tested before the Ok branch,
+        # which matches "Running" for a service state. Without this, every step
+        # in progress paints green and the grid claims a server is finished
+        # while it is still being rebooted.
+        '^RUNNING\.\.\.'                                     { return 'Warn' }
+        '^(OK|PASS|PASSED|GREEN|READY|HEALTHY|MOUNTED|UP|ACTIVE|RUNNING|DRAINED|COMPLETE|COMPLETED|RESTORED|NO REBOOT PENDING|LOGIN READY)' { return 'Ok' }
+        '^(WARN|WARNING|RUNNING\.\.\.|WORKING|BUSY|REBOOT REQUIRED|DRAINING|MAINTENANCE|WAITING|HOLD|PAUSED|SIMULATED)'         { return 'Warn' }
+        # The live reboot states. All yellow rather than red: a server that is
+        # down because this tool just restarted it is doing what was asked, and
+        # colouring it red trains the operator to ignore red.
+        '^(SHUTTING DOWN|DOWN|BOOTING|WINRM UP|SERVICES STARTING|MOVED OFF|MOVING|PARTIAL)'                                     { return 'Warn' }
+        '^(FAIL|FAILED|ERROR|BAD|RED|BLOCKED|UNREACHABLE|ABORTED|CANCELLED|STOPPED|UNKNOWN|DISMOUNTED|LOST)'                    { return 'Bad' }
+        default                                              { return 'Warn' }
+    }
+}
+
+function Get-SeverityColor {
+    param([string]$Severity)
+
+    switch ($Severity) {
+        'Ok'   { return $clrGood }
+        'Bad'  { return $clrBad }
+        'Warn' { return $clrWarn }
+        'Idle' { return $clrIdle }
+        default { return [System.Drawing.Color]::White }
+    }
+}
+
+# --- Server model -------------------------------------------------------------
+<#
+    WHERE THE SERVERS COME FROM, AND WHY IT IS NOT THIS FILE.
+
+    The original of this tool carried eight hostnames as literals and read the
+    site and the role out of them with two regexes. That is the one thing this
+    toolkit does not allow (ARCHITECTURE 61d): a name in a .ps1 makes the file
+    specific to one organisation, and a site derived from a naming convention
+    is a GUESS about the fact this tool's entire safety rule rests on.
+
+    So the list is Tenant.json's OnPremExchange.Servers, read through
+    Get-TenantExchangeServerList -- which is the same list Check Queues, Clear
+    IIS Logs and Exchange Health Check work against, already subtracts
+    ExcludedServers, and already accepts an entry as either a bare name or a
+    { Name, Site, Role } object. Tenant Manager edits it as NAME:Site:Role.
+
+    THE FALLBACKS ARE DELIBERATELY BLUNT.
+
+      Site absent -> the leading letters-and-digits of the name (SRV01PMEX02
+                     reads as SRV01). Generic, not a convention: it is there so
+                     a tenant that has not declared sites yet still gets SOME
+                     grouping, and every server that does not match becomes a
+                     site of its own -- which means one server at a time, which
+                     is the safe answer.
+      Role absent -> Mailbox, so the full DAG pipeline runs and pre-flight
+                     decides. An Edge server mis-typed as Mailbox is REFUSED at
+                     pre-flight; a Mailbox server mis-typed as Edge would be
+                     rebooted with its databases still mounted, so the default
+                     has to fall this way.
+
+    Either fallback is reported on screen and in the step log, because an
+    inferred site is a fact the operator needs to check before ticking a box.
+#>
+function Get-TenantServerFacts {
+    <#
+        Name -> declared Site and Role, straight from the tenant file. Read
+        once here rather than per server: Get-TenantConfig is cached, but the
+        shape-handling below is not, and it is the part that is easy to get
+        subtly wrong.
+    #>
+    $map = @{}
+    $cfg = $null
+    try { $cfg = (Get-TenantConfig).OnPremExchange } catch { }
+    if (-not $cfg -or -not $cfg.PSObject.Properties['Servers']) { return $map }
+
+    foreach ($e in @($cfg.Servers)) {
+        if ($null -eq $e) { continue }
+        $name = ''; $site = ''; $role = ''
+        if ($e -is [string]) {
+            $name = "$e".Trim()
+        } else {
+            try {
+                if ($e.PSObject.Properties['Name']) { $name = "$($e.Name)".Trim() }
+                if ($e.PSObject.Properties['Site']) { $site = "$($e.Site)".Trim() }
+                if ($e.PSObject.Properties['Role']) { $role = "$($e.Role)".Trim() }
+            } catch { }
+            if (-not $name) { $name = "$e".Trim() }
+        }
+        if (-not $name) { continue }
+        # Keyed on the SHORT name, upper case: the tenant file may carry an
+        # FQDN and the grid works in short names. 'exsrv01.corp.example.com'
+        # and 'EXSRV01' are one server.
+        $key = (($name -split '\.')[0]).ToUpperInvariant()
+        $map[$key] = [pscustomobject]@{ Site = $site; Role = $role }
+    }
+    return $map
+}
+
+$script:ServerFacts = Get-TenantServerFacts
+
+function Get-ServerSite {
+    <#
+    .SYNOPSIS
+        The declared site for a server, or an inferred one.
+    .DESCRIPTION
+        Declared wins, always. The inference is the leading letters-and-digits
+        of the name and exists only so an undeclared estate still gets some
+        grouping; a name it cannot read becomes its own site, which runs that
+        server alone.
+    #>
+    param([string]$Name)
+
+    $key = (("$Name" -split '\.')[0]).ToUpperInvariant()
+    if ($script:ServerFacts.ContainsKey($key) -and $script:ServerFacts[$key].Site) {
+        return $script:ServerFacts[$key].Site
+    }
+    if ($key -match '^([A-Za-z]+\d+)') { return $Matches[1].ToUpperInvariant() }
+    if ($key) { return $key }
+    return 'UNKNOWN'
+}
+
+function Test-ServerSiteDeclared {
+    <# Was the site read from Tenant.json, or inferred? The grid says which. #>
+    param([string]$Name)
+
+    $key = (("$Name" -split '\.')[0]).ToUpperInvariant()
+    return ($script:ServerFacts.ContainsKey($key) -and [bool]$script:ServerFacts[$key].Site)
+}
+
+function Get-ServerRole {
+    <#
+    .SYNOPSIS
+        Mailbox or Edge, declared in Tenant.json where possible.
+    .DESCRIPTION
+        Anything that is not recognisably Edge is treated as a DAG member, so
+        the full pipeline and its pre-flight run. See the region banner for why
+        the default falls this way and not the other.
+    #>
+    param([string]$Name)
+
+    $key = (("$Name" -split '\.')[0]).ToUpperInvariant()
+    if ($script:ServerFacts.ContainsKey($key)) {
+        $r = "$($script:ServerFacts[$key].Role)".Trim()
+        if ($r -match '^(?i)edge(\s*transport)?$') { return 'Edge' }
+        if ($r -match '^(?i)(mailbox|dag|mbx)$')   { return 'Mailbox' }
+    }
+    return 'Mailbox'
+}
+
+# --- State --------------------------------------------------------------------
+# $script:State is the single source of truth for the grid. Workers never touch
+# it; they post events onto a concurrent queue that the UI timer drains, which
+# is the only safe way to get data out of a runspace and into WinForms.
+$script:State   = New-Object System.Collections.Specialized.OrderedDictionary
+$script:Steps   = New-Object System.Collections.Generic.List[object]
+$script:Jobs    = @{}
+$script:Queue   = @{}          # site -> [System.Collections.Generic.List[string]] of queued servers
+$script:Holds   = @{}          # site -> reason the site is halted, if any
+$script:Sync    = [hashtable]::Synchronized(@{})
+$script:Sync.Events = New-Object System.Collections.Concurrent.ConcurrentQueue[object]
+$script:Sync.Cancel = $false
+$script:Credential   = $null
+$script:Busy         = $false
+$script:RunStarted   = $null
+$script:Activity     = New-Object System.Text.StringBuilder
+$script:LogFile      = Join-Path $WorkFolder ('ServerReboot_{0:yyyyMMdd}.log' -f (Get-Date))
+$script:ConfigNote   = ''
+
+# THE AUDIT LOG'S Environment COLUMN. The console passes -Environment when it
+# knows; when it does not, the default directory's Id is the honest answer and
+# is what Connect-ExSE, Bulk-DLMembership and CertificateExpiry already do.
+if (-not $Environment) {
+    try {
+        $dir = Get-DefaultTenantDirectory
+        if ($dir) { $Environment = "$($dir.Id)" }
+    } catch { }
+}
+$script:RunId = ''
+try { $script:RunId = Get-ToolRunId -ScriptName 'ServerReboot.ps1' } catch { }
+
+function New-ServerState {
+    param([string]$Name)
+
+    [pscustomobject][ordered]@{
+        Server       = $Name
+        Site         = Get-ServerSite $Name
+        Role         = Get-ServerRole $Name
+        Reachable    = 'UNKNOWN'
+        # Boot is the live reboot state, updated every few seconds from the
+        # moment the restart is issued until the server will accept a logon.
+        # Without it the grid goes quiet for the ten minutes when the operator
+        # most wants to know whether the box is coming back.
+        Boot         = '-'
+        DbMount      = '-'
+        Uptime       = '-'
+        LastBoot     = $null
+        LastPatch    = '-'
+        PatchState   = 'UNKNOWN'
+        Ready        = 'UNKNOWN'
+        BlockReason  = ''
+        Phase        = 'Idle'
+        ChkServices  = '-'
+        ChkDatabases = '-'
+        ChkQueues    = '-'
+        ChkCluster   = '-'
+        Result       = '-'
+        ActiveDbs    = @()
+        WasPam       = $false
+        Detail       = ''
+        Started      = $null
+        Finished     = $null
+    }
+}
+
+# --- Resolve the estate -------------------------------------------------------
+# -Servers overrides for one run; empty asks the toolkit. An empty ANSWER is
+# reported as "nothing is configured", never as "nothing to do" -- the window
+# still opens, says where to set the list, and every button that could touch a
+# server is left disabled.
+if (@($Servers).Count -eq 0) {
+    try { $Servers = @(Get-TenantExchangeServerList) } catch { $Servers = @() }
+    if (@($Servers).Count -eq 0) {
+        $script:ConfigNote = 'No servers configured. Set OnPremExchange.Servers in Tenant Manager, as NAME:Site:Role.'
+    }
+} else {
+    $script:ConfigNote = 'Server list overridden on the command line; Tenant.json was not used for the list.'
+}
+
+foreach ($s in @($Servers | ForEach-Object { (("$_" -split '\.')[0]).Trim().ToUpperInvariant() } | Where-Object { $_ } | Select-Object -Unique)) {
+    $script:State[$s] = New-ServerState $s
+}
+foreach ($site in @($script:State.Values | ForEach-Object { $_.Site } | Select-Object -Unique)) {
+    $script:Queue[$site] = New-Object System.Collections.Generic.List[string]
+    $script:Holds[$site] = $null
+}
+
+# THE EXCHANGE SESSION HOSTS. Only a Mailbox-role server has an organisation
+# endpoint, so the candidates are the DAG members from the same tenant list --
+# not a second list to keep in step. The worker always excludes the server it
+# is rebooting, so two per site is what makes this work; one in total means
+# only one mailbox server can ever be rebooted, and the scan says so.
+if (@($ExchangeConnectionServers).Count -eq 0) {
+    $ExchangeConnectionServers = @($script:State.Values |
+                                    Where-Object { $_.Role -eq 'Mailbox' } |
+                                    ForEach-Object { $_.Server })
+}
+$ExchangeConnectionServers = @($ExchangeConnectionServers |
+                                ForEach-Object { (("$_" -split '\.')[0]).Trim().ToUpperInvariant() } |
+                                Where-Object { $_ } | Select-Object -Unique)
+
+# An undeclared site or role is a fact worth saying out loud on the status bar
+# rather than leaving in a tooltip: see the Server model region for why.
+$script:UndeclaredSites = @($script:State.Values |
+                            Where-Object { -not (Test-ServerSiteDeclared $_.Server) } |
+                            ForEach-Object { $_.Server })
+
+# ==============================================================================
+#  WORKER: shared preamble
+# ==============================================================================
+# Both workers run in their own runspace, so they can see none of the functions
+# above. Everything they need is either passed in or defined in this preamble,
+# which is prefixed onto each worker body. Keeping it in one string means the
+# scan and the reboot agree on how a server is reached, how Exchange is
+# connected to, and what "pending reboot" means - three things that must not
+# drift apart between the screen that says "ready" and the code that acts on it.
+$workerPreamble = @'
+function Post {
+    param($Sync, [hashtable]$Event)
+
+    $Event['Time'] = Get-Date
+    $Sync.Events.Enqueue([pscustomobject]$Event)
+}
+
+function Post-Step {
+    param($Sync, [string]$Server, [string]$Phase, [string]$Step, [string]$Status, [string]$Detail = '')
+    Post $Sync @{ Kind = 'Step'; Server = $Server; Phase = $Phase; Step = $Step; Status = $Status; Detail = $Detail }
+}
+
+function Post-Check {
+    param($Sync, [string]$Server, [string]$Check, [string]$Value)
+    Post $Sync @{ Kind = 'Check'; Server = $Server; Check = $Check; Value = $Value }
+}
+
+function Post-Field {
+    param($Sync, [string]$Server, [string]$Name, $Value)
+    Post $Sync @{ Kind = 'Field'; Server = $Server; Name = $Name; Value = $Value }
+}
+
+function Get-RemoteArgs {
+    <#
+        Splat for Invoke-Command / New-PSSession. The credential is optional:
+        the normal case is Kerberos as the signed-in admin, and passing a null
+        -Credential is an error rather than a no-op.
+    #>
+    param([string]$ComputerName, $Credential)
+
+    $a = @{ ComputerName = $ComputerName; ErrorAction = 'Stop' }
+    if ($Credential) { $a['Credential'] = $Credential }
+    return $a
+}
+
+function Test-ServerOnline {
+    <#
+        WinRM, not ping. ICMP answering proves the NIC is up; what every later
+        step needs is a working remoting endpoint, so that is what is tested.
+    #>
+    param([string]$ComputerName, $Credential, [int]$TimeoutSeconds = 20)
+
+    try {
+        $a = Get-RemoteArgs $ComputerName $Credential
+        $a['ScriptBlock'] = { $env:COMPUTERNAME }
+        $null = Invoke-Command @a
+        return $true
+    }
+    catch { return $false }
+}
+
+function Test-ServerOnlineDetail {
+    <#
+    .SYNOPSIS
+        Reachability plus a reason that names the actual layer that failed.
+    .DESCRIPTION
+        "No response from the remoting endpoint" covers a wrong name, a stopped
+        WinRM service, a firewall, a refused credential and a zero-trust tunnel
+        that is not brokering the port - five different teams. So the failure
+        is classified.
+
+        A TCP probe is NOT trusted to decide this. Measured in this
+        environment: every server resolves to a Zscaler Private Access
+        synthetic address (100.64.0.0/10) and the local ZSATunnel client
+        completes the TCP handshake for ANY port on those addresses in about
+        1ms - all of 25, 135, 445, 3389, 5985, 5986, 50389 and 443 probe as
+        "open" on a DMZ Edge server, which is not physically plausible. So a
+        port probe through a ZTNA client is noise, and reporting "port closed,
+        so a firewall is blocking it" was simply wrong.
+
+        Test-WSMan is the authoritative probe, because it requires the far end
+        to actually speak WS-Management. Its HTTP 12152 - "the server returned
+        an invalid or unrecognized response" - is the signature of a broker or
+        proxy that accepted the connection and then closed it without speaking
+        HTTP, which is exactly what a ZTNA client does for a port its policy
+        does not cover.
+    #>
+    param([string]$ComputerName, $Credential)
+
+    try {
+        $a = Get-RemoteArgs $ComputerName $Credential
+        $a['ScriptBlock'] = { $env:COMPUTERNAME }
+        $null = Invoke-Command @a
+        return [pscustomobject]@{ Online = $true; Reason = 'Remoting endpoint answered.' }
+    }
+    catch {
+        $m = ($_.Exception.Message -replace '\s+', ' ').Trim()
+
+        # Resolve once, so the message can say whether we are even looking at a
+        # real address or at an overlay network's synthetic one.
+        $ip = ''
+        $synthetic = $false
+        try {
+            $ip = (([System.Net.Dns]::GetHostEntry($ComputerName)).AddressList |
+                     Where-Object { $_.AddressFamily -eq 'InterNetwork' } |
+                     ForEach-Object { $_.IPAddressToString }) -join ', '
+            # 100.64.0.0/10 is RFC 6598 shared address space, which ZPA and
+            # similar zero-trust clients hand out as synthetic IPs.
+            $synthetic = ($ip -match '^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.')
+        }
+        catch { $ip = 'did not resolve' }
+
+        $wsman = ''
+        try { $null = Test-WSMan -ComputerName $ComputerName -ErrorAction Stop; $wsman = 'ok' }
+        catch { $wsman = ($_.Exception.Message -replace '\s+', ' ') }
+
+        $hint =
+            if ($ip -eq 'did not resolve') {
+                'the name does not resolve in DNS'
+            }
+            elseif ($wsman -match '12152|invalid or unrecognized response') {
+                $who = if ($synthetic) {
+                    'a zero-trust tunnel (the address is a synthetic 100.64.0.0/10 one) is accepting the connection but not brokering WinRM to this host - the access policy almost certainly has no application segment covering TCP 5985/5986 for it'
+                } else {
+                    'something accepted the connection on the WinRM port and then closed it without speaking HTTP - a proxy or load balancer in front of the host, rather than WinRM itself'
+                }
+                'WinRM never answered: {0}. This is a network/access-policy change, not an Exchange one, and it cannot be diagnosed further from this machine - the far end is masked' -f $who
+            }
+            elseif ($wsman -match 'cannot be resolved|No such host|unknown host') { 'the name does not resolve in DNS' }
+            elseif ($m -match 'Access is denied|AuthorizationManager|access den|Kerberos|authentication') {
+                'WinRM answered but rejected the logon - check your rights on the box, or set Credentials (a workgroup/DMZ host also needs TrustedHosts)'
+            }
+            elseif ($m -match 'timed out|timeout') { 'the connection timed out before WinRM answered' }
+            else { 'WinRM did not complete the request' }
+
+        return [pscustomobject]@{
+            Online = $false
+            Reason = '{0}. Resolves to {1}{2}. Test-WSMan: {3}' -f `
+                        $hint, $ip, $(if ($synthetic) { ' (synthetic/overlay address)' } else { '' }),
+                        $(if ($wsman.Length -gt 220) { $wsman.Substring(0, 220) + '...' } else { $wsman })
+        }
+    }
+}
+
+function Test-TcpPort {
+    <#
+        Can we open a TCP connection, within a short timeout? Used for the RDP
+        port, because "WinRM answers" and "an administrator can log on" are not
+        the same thing and the gap between them is minutes on an Exchange box.
+    #>
+    param([string]$ComputerName, [int]$Port, [int]$TimeoutMs = 3000)
+
+    $client = [System.Net.Sockets.TcpClient]::new()
+    try {
+        $connect = $client.ConnectAsync($ComputerName, $Port)
+        if (-not $connect.Wait($TimeoutMs)) { return $false }
+        return $client.Connected
+    }
+    catch { return $false }
+    finally { $client.Dispose() }
+}
+
+function Test-LogonReady {
+    <#
+    .SYNOPSIS
+        Is the server actually ready to be logged on to, not merely pingable?
+    .DESCRIPTION
+        A rebooting Windows box answers ICMP long before it answers anything
+        useful, and answers WinRM before the logon stack is up. Waiting only for
+        WinRM is what produces the "it says it is back but I cannot RDP to it"
+        gap, during which somebody starts poking the server by hand in the
+        middle of a maintenance window.
+
+        Ready means all of: WinRM answers, the Server / Workstation / Netlogon
+        / Remote Desktop services are running, the Service Control Manager has
+        finished its startup pass, and the RDP port accepts a connection. The
+        reason is returned as well, so the grid can say WHICH of those is still
+        missing rather than just "not yet".
+    #>
+    param([string]$ComputerName, $Credential)
+
+    $missing = @()
+    try {
+        $a = Get-RemoteArgs $ComputerName $Credential
+        # One CIM call, not two: this runs every ten seconds per server for the
+        # whole of a reboot, and Win32_Service is not a cheap query.
+        $a['ScriptBlock'] = {
+            $want = @('LanmanServer', 'LanmanWorkstation', 'Netlogon', 'TermService', 'RpcSs', 'EventLog')
+            $all = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue)
+            $svcs = @($all | Where-Object { $want -contains $_.Name })
+            [pscustomobject]@{
+                NotRunning = @($svcs | Where-Object { $_.State -ne 'Running' } | ForEach-Object { $_.Name })
+                Found      = @($svcs | ForEach-Object { $_.Name })
+                # Auto services still stopped is the Service Control Manager
+                # telling us it has not finished its startup pass yet.
+                AutoPending = @($all | Where-Object {
+                                    $_.StartMode -eq 'Auto' -and $_.State -eq 'Stopped' -and
+                                    $_.Name -notlike 'MSExchange*' }).Count
+            }
+        }
+        $r = Invoke-Command @a
+        if ($r.NotRunning.Count -gt 0) { $missing += ('services ' + ($r.NotRunning -join ', ')) }
+        # A handful of stopped auto services is normal on any Windows server
+        # (trigger-started ones report Auto/Stopped), so this is a threshold and
+        # not a zero test - it only catches a box still in its startup storm.
+        if ($r.AutoPending -gt 12) { $missing += ('{0} automatic services still starting' -f $r.AutoPending) }
+    }
+    catch {
+        return [pscustomobject]@{ Ready = $false; Reason = 'WinRM not answering yet' }
+    }
+
+    if (-not (Test-TcpPort -ComputerName $ComputerName -Port 3389)) { $missing += 'RDP (3389) not listening' }
+
+    if ($missing.Count -eq 0) { return [pscustomobject]@{ Ready = $true; Reason = 'WinRM, logon services and RDP are all up.' } }
+    return [pscustomobject]@{ Ready = $false; Reason = ($missing -join '; ') }
+}
+
+function Get-PendingRebootInfo {
+    <#
+        The four signals Windows actually uses, read on the box itself:
+        Component Based Servicing, Windows Update, a queued file rename, and a
+        pending computer rename. Any one of them means the patch run is not
+        finished until the server restarts.
+    #>
+    param([string]$ComputerName, $Credential)
+
+    $a = Get-RemoteArgs $ComputerName $Credential
+    $a['ScriptBlock'] = {
+        $reasons = @()
+        if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') {
+            $reasons += 'Component Based Servicing'
+        }
+        if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') {
+            $reasons += 'Windows Update'
+        }
+        $pfro = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' `
+                                 -Name PendingFileRenameOperations -ErrorAction SilentlyContinue
+        if ($pfro -and $pfro.PendingFileRenameOperations) { $reasons += 'Pending file rename' }
+        try {
+            $active = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -ErrorAction Stop).ComputerName
+            $target = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -ErrorAction Stop).ComputerName
+            if ($active -ne $target) { $reasons += 'Pending computer rename' }
+        }
+        catch { }
+
+        $os = Get-CimInstance Win32_OperatingSystem
+        $hotfixes = @(Get-HotFix -ErrorAction SilentlyContinue |
+                        Where-Object { $_.InstalledOn } |
+                        Sort-Object InstalledOn -Descending)
+        $last = $hotfixes | Select-Object -First 1
+
+        [pscustomobject]@{
+            PendingReboot  = ($reasons.Count -gt 0)
+            Reasons        = ($reasons -join '; ')
+            LastBootTime   = $os.LastBootUpTime
+            OSCaption      = $os.Caption
+            LastHotfixId   = if ($last) { $last.HotFixID } else { $null }
+            LastHotfixDate = if ($last) { $last.InstalledOn } else { $null }
+            HotfixCount7d  = @($hotfixes | Where-Object { $_.InstalledOn -gt (Get-Date).AddDays(-7) }).Count
+        }
+    }
+    return Invoke-Command @a
+}
+
+function Get-ExchangeServiceState {
+    <#
+        Every Exchange service set to start automatically, plus the IIS and
+        remoting services Exchange depends on. Delayed-auto services are
+        included: "Auto (Delayed)" still means Windows is expected to start it,
+        and a stopped delayed service after a reboot is a real fault.
+    #>
+    param([string]$ComputerName, $Credential)
+
+    $a = Get-RemoteArgs $ComputerName $Credential
+    $a['ScriptBlock'] = {
+        # Core: Exchange does not serve mail without these, whatever their
+        # start mode. They are checked BY NAME rather than by StartMode,
+        # because a critical service set to Manual or Disabled would otherwise
+        # be skipped entirely - which is how a server whose Information Store
+        # and Transport were down still reported "28 automatic services, all
+        # running" while its database copies showed ServiceDown.
+        $core = @('MSExchangeADTopology', 'MSExchangeIS', 'MSExchangeRepl', 'MSExchangeTransport',
+                  'MSExchangeFrontEndTransport', 'MSExchangeRPC', 'MSExchangeServiceHost',
+                  'MSExchangeMailboxAssistants', 'MSExchangeDelivery', 'MSExchangeSubmission',
+                  'W3SVC', 'WAS')
+        # Non-core: flagged, never fatal. MSExchangeFlighting, -Mitigation and
+        # -Compliance in particular are routinely left stopped or disabled by
+        # policy, and failing the whole server for them makes READY unreachable.
+        $extra = @('IISADMIN', 'WinRM', 'FMS', 'HostControllerService')
+
+        $all = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue)
+        $svcs = @($all | Where-Object { $_.Name -like 'MSExchange*' -or $extra -contains $_.Name -or $core -contains $_.Name })
+        $auto = @($svcs | Where-Object { $_.StartMode -eq 'Auto' })
+
+        $coreFound = @($svcs | Where-Object { $core -contains $_.Name })
+        $coreStopped = @($coreFound | Where-Object { $_.State -ne 'Running' } |
+                            ForEach-Object { '{0}[{1}/{2}]' -f $_.Name, $_.State, $_.StartMode })
+        $otherStopped = @($auto | Where-Object { $_.State -ne 'Running' -and $core -notcontains $_.Name } |
+                            ForEach-Object { $_.Name })
+
+        [pscustomobject]@{
+            Total        = $svcs.Count
+            AutoTotal    = $auto.Count
+            CoreTotal    = $coreFound.Count
+            CoreStopped  = $coreStopped
+            OtherStopped = $otherStopped
+            # Everything not running, for the restart-after-reboot nudge.
+            StoppedList  = @($auto | Where-Object { $_.State -ne 'Running' } | ForEach-Object { $_.Name }) +
+                           @($coreFound | Where-Object { $_.State -ne 'Running' -and $_.StartMode -ne 'Auto' } | ForEach-Object { $_.Name })
+            Running      = @($auto | Where-Object { $_.State -eq 'Running' }).Count
+        }
+    }
+    return Invoke-Command @a
+}
+
+function Start-StoppedExchangeServices {
+    <#
+        One attempt to start whatever did not come up on its own. Exchange
+        services have long, order-sensitive dependency chains, so a service that
+        lost a race at boot usually starts fine a minute later - and a service
+        that will not start twice is a genuine failure worth showing in red.
+    #>
+    param([string]$ComputerName, $Credential, [string[]]$Names)
+
+    if (-not $Names -or $Names.Count -eq 0) { return @() }
+    $a = Get-RemoteArgs $ComputerName $Credential
+    $a['ScriptBlock'] = {
+        param($svcNames)
+        $failed = @()
+        foreach ($n in $svcNames) {
+            try { Start-Service -Name $n -ErrorAction Stop }
+            catch { $failed += ('{0}: {1}' -f $n, $_.Exception.Message) }
+        }
+        return ,$failed
+    }
+    $a['ArgumentList'] = @(, $Names)
+    return Invoke-Command @a
+}
+
+function New-ExchangeSession {
+    <#
+    .SYNOPSIS
+        Remote Exchange shell against a server that is NOT being rebooted, with
+        the cmdlets we need imported as local proxy functions.
+    .DESCRIPTION
+        A `Microsoft.Exchange` endpoint runs in **NoLanguage** mode. That means
+        `Invoke-Command -Session $s -ScriptBlock { ... }` fails for anything
+        beyond a bare cmdlet call, with
+
+            The syntax is not supported by this runspace. This can occur if
+            the runspace is in no-language mode.
+
+        - which is what happened to every Get-MailboxDatabaseCopyStatus,
+        Get-ServerComponentState and Get-Queue call in this tool. A variable, an
+        index, a pipeline into ForEach-Object: all illegal over there. It is a
+        deliberate RBAC restriction, not something to work around by
+        simplifying the scriptblocks.
+
+        The supported answer is Import-PSSession: it builds local proxy
+        functions that marshal each call over the session. The cmdlet runs on
+        the Exchange server, but the scriptblock AROUND it runs locally in full
+        language mode, so all the object shaping works normally.
+
+        Import-PSSession inside a function imports into that function's scope
+        and vanishes on return, so the module is re-imported with -Global.
+
+        Only the commands the caller asks for are imported. Importing the whole
+        Exchange schema takes the better part of a minute per worker; a handful
+        of named cmdlets takes a second or two, and eight workers do this at
+        once.
+    #>
+    param([string[]]$Candidates, [string]$Exclude, $Credential, [string[]]$CommandName)
+
+    if (-not $CommandName -or $CommandName.Count -eq 0) {
+        $CommandName = @('Get-MailboxDatabaseCopyStatus', 'Get-Queue', 'Get-ServerComponentState')
+    }
+
+    $lastError = ''
+    foreach ($srv in $Candidates) {
+        if ($srv -eq $Exclude) { continue }
+        $s = $null
+        try {
+            $p = @{
+                ConfigurationName = 'Microsoft.Exchange'
+                ConnectionUri     = "http://$srv/PowerShell/"
+                Authentication    = 'Kerberos'
+                ErrorAction       = 'Stop'
+            }
+            if ($Credential) { $p['Credential'] = $Credential }
+            $s = New-PSSession @p
+            if ($s.State -ne 'Opened') { throw ('the session opened in state {0}' -f $s.State) }
+
+            $mod = Import-PSSession -Session $s -CommandName $CommandName `
+                                    -AllowClobber -DisableNameChecking -ErrorAction Stop
+            Import-Module -ModuleInfo $mod -Global -DisableNameChecking -ErrorAction Stop
+
+            # RBAC can hide a cmdlet entirely, in which case Import-PSSession
+            # quietly skips it and the failure surfaces much later as "not
+            # recognized". Say so now, while it is still diagnosable.
+            $missing = @($CommandName | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) })
+            Add-Member -InputObject $s -NotePropertyName 'MissingCommands' -NotePropertyValue $missing -Force
+            Add-Member -InputObject $s -NotePropertyName 'ExchangeServer' -NotePropertyValue $srv -Force
+            return $s
+        }
+        catch {
+            $lastError = '{0}: {1}' -f $srv, $_.Exception.Message
+            if ($s) { Remove-PSSession $s -ErrorAction SilentlyContinue }
+            continue
+        }
+    }
+    # Park the reason where the caller can report it. "No Exchange shell could
+    # be opened" on its own sends someone hunting the network when the real
+    # answer was an RBAC denial or a blocked Import-PSSession.
+    $script:LastExSessionError = $lastError
+    return $null
+}
+
+function Get-ExSessionError {
+    if ($script:LastExSessionError) { return $script:LastExSessionError }
+    return 'no candidate server accepted a connection'
+}
+
+function Invoke-Ex {
+    <#
+    .SYNOPSIS
+        Run an Exchange scriptblock. Kept as a funnel so every Exchange call in
+        this tool goes through one place, and a dead session gives one clear
+        error instead of eight different ones.
+    .DESCRIPTION
+        The scriptblock runs LOCALLY, not in the session. New-ExchangeSession
+        has already imported the cmdlets as local proxies, so the Exchange
+        cmdlet still executes on the Exchange server while the surrounding
+        PowerShell runs here, in full language mode. Sending the scriptblock
+        over the wire instead is what the no-language-mode error was.
+    #>
+    param($Session, [scriptblock]$ScriptBlock, $ArgumentList = @())
+
+    if (-not $Session -or $Session.State -ne 'Opened') { throw 'The Exchange session is not open.' }
+    return & $ScriptBlock @ArgumentList
+}
+
+function Invoke-LocalEx {
+    <#
+        Exchange cmdlets run ON the server itself via the local snap-in. Needed
+        for Edge Transport, whose queues and transport configuration are not
+        visible from the organisation session, and useful as a fallback when the
+        org session cannot answer for a particular server.
+    #>
+    param([string]$ComputerName, $Credential, [scriptblock]$ScriptBlock, $ArgumentList = @())
+
+    $a = Get-RemoteArgs $ComputerName $Credential
+    $a['ScriptBlock'] = {
+        param($body, $bodyArgs)
+        if (-not (Get-Command Get-Queue -ErrorAction SilentlyContinue)) {
+            $snapin = Get-PSSnapin -Registered -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -like 'Microsoft.Exchange.Management.PowerShell*' } |
+                        Select-Object -First 1
+            if ($snapin) { Add-PSSnapin $snapin.Name -ErrorAction Stop }
+        }
+        & ([scriptblock]::Create($body)) @bodyArgs
+    }
+    $a['ArgumentList'] = @($ScriptBlock.ToString(), $ArgumentList)
+    return Invoke-Command @a
+}
+
+function Get-QueueSnapshot {
+    <#
+        Transport queues for one server, org session first and the server's own
+        snap-in as the fallback. Shadow and poison queues are reported but do
+        not count towards the drain total: a shadow queue is meant to hold
+        messages for its partner, and draining it is neither possible nor
+        desirable.
+    #>
+    param([string]$ComputerName, $Credential, $Session, [string]$Role)
+
+    $body = {
+        param($srv)
+        $queues = @(Get-Queue -Server $srv -ErrorAction Stop |
+                        Where-Object { $_.Identity -notlike '*\Shadow\*' })
+        $active = @($queues | Where-Object { $_.DeliveryType -ne 'ShadowRedundancy' })
+        [pscustomobject]@{
+            Total    = ($active | Measure-Object -Property MessageCount -Sum).Sum
+            Poison   = @($queues | Where-Object { $_.Identity -like '*\Poison' } |
+                            Measure-Object -Property MessageCount -Sum).Sum
+            Retry    = @($active | Where-Object { $_.Status -eq 'Retry' }).Count
+            Detail   = (@($active | Where-Object { $_.MessageCount -gt 0 } |
+                            ForEach-Object { '{0}={1}' -f $_.Identity, $_.MessageCount }) -join ', ')
+        }
+    }
+
+    if ($Role -ne 'Edge' -and $Session) {
+        # For a Hub/Mailbox server the organisation session is the ONLY sane
+        # path. The local-snap-in fallback needs the remote box to reach AD as
+        # us, which is a second hop Kerberos will not make without delegation -
+        # it fails as "Active Directory operation failed... The supplied
+        # credential for 'DOMAIN\user' is invalid", which reads like a password
+        # problem and is not one. So report the real error instead of falling
+        # through to a fallback that cannot work here.
+        try { return Invoke-Ex -Session $Session -ScriptBlock $body -ArgumentList @($ComputerName) }
+        catch { throw ('Get-Queue via the Exchange session failed: {0}' -f $_.Exception.Message) }
+    }
+    # Edge has no organisation session. Its queues have to be read on the box
+    # itself, which works because Edge reads its own AD LDS locally - no second
+    # hop is involved.
+    return Invoke-LocalEx -ComputerName $ComputerName -Credential $Credential -ScriptBlock $body -ArgumentList @($ComputerName)
+}
+
+function Get-InactiveComponents {
+    <#
+    .SYNOPSIS
+        Components that are Inactive and should not be.
+    .DESCRIPTION
+        ForwardSyncDaemon and ProvisioningRps are Inactive on a normal on-prem
+        server - they belong to the multi-tenant / hybrid provisioning path
+        that is not in use. Reporting them produced a permanent WARN on all
+        four mailbox servers that said "left in maintenance from an earlier
+        run?", which is both wrong and the kind of noise that gets a genuine
+        maintenance leftover ignored.
+    #>
+    param($Components)
+
+    $benign = @('ForwardSyncDaemon', 'ProvisioningRps')
+    return @($Components | Where-Object { $benign -notcontains ([string]$_.Component) })
+}
+
+function Test-CopyIndexBad {
+    <#
+    .SYNOPSIS
+        Is a database copy's ContentIndexState actually a problem?
+    .DESCRIPTION
+        Only Failed / FailedAndSuspended / Suspended are. Everything else is a
+        normal resting state, and treating them as faults is how a completely
+        healthy DAG gets reported as unsafe to reboot.
+
+        NotApplicable is the one that matters here: Exchange 2019 with BigFunnel
+        indexes inside the mailbox database, so the classic content index is
+        genuinely not applicable and every copy reports it. It was in the
+        not-allowed list, which failed the Databases check on all four mailbox
+        servers while their copies were Mounted/Healthy with zero queues -
+        i.e. a red grid describing a perfectly healthy DAG.
+
+        Crawling is deliberately allowed too: it is a transient state during a
+        reseed and it clears on its own.
+    #>
+    param([string]$State)
+
+    return ([string]$State -in @('Failed', 'FailedAndSuspended', 'Suspended'))
+}
+
+function Get-CopyStatusSnapshot {
+    <#
+        Every database copy hosted by one server, flattened to plain values.
+        Enum types do not survive a session boundary usefully, so they are cast
+        to strings here rather than in four different comparisons later.
+    #>
+    param($Session, [string]$ComputerName)
+
+    return Invoke-Ex -Session $Session -ScriptBlock {
+        param($srv)
+        Get-MailboxDatabaseCopyStatus -Server $srv -ErrorAction Stop | ForEach-Object {
+            [pscustomobject]@{
+                Name              = [string]$_.Name
+                DatabaseName      = [string]$_.DatabaseName
+                Status            = [string]$_.Status
+                CopyQueueLength   = [int]$_.CopyQueueLength
+                ReplayQueueLength = [int]$_.ReplayQueueLength
+                ContentIndexState = [string]$_.ContentIndexState
+                ActiveCopy        = [bool]$_.ActiveCopy
+            }
+        }
+    } -ArgumentList @($ComputerName)
+}
+
+function Get-ClusterSnapshot {
+    <#
+        Cluster node state and the owner of the core cluster group, read from a
+        node that is not the one being worked on. GroupType 'Cluster' is the
+        core group whose owner is the Primary Active Manager - matching on that
+        rather than the name "Cluster Group" survives a renamed group.
+    #>
+    param([string]$QueryNode, $Credential, [string]$Target)
+
+    $a = Get-RemoteArgs $QueryNode $Credential
+    $a['ScriptBlock'] = {
+        param($target)
+        Import-Module FailoverClusters -ErrorAction Stop
+        $nodes = @(Get-ClusterNode -ErrorAction Stop)
+        $core  = Get-ClusterGroup -ErrorAction Stop | Where-Object { $_.GroupType -eq 'Cluster' } | Select-Object -First 1
+        [pscustomobject]@{
+            CoreGroup     = if ($core) { [string]$core.Name } else { $null }
+            CoreOwner     = if ($core) { [string]$core.OwnerNode.Name } else { $null }
+            TargetState   = [string](($nodes | Where-Object { $_.Name -eq $target }).State)
+            UpNodes       = @($nodes | Where-Object { [string]$_.State -eq 'Up' } | ForEach-Object { [string]$_.Name })
+            AllNodes      = @($nodes | ForEach-Object { [string]$_.Name })
+            PausedNodes   = @($nodes | Where-Object { [string]$_.State -eq 'Paused' } | ForEach-Object { [string]$_.Name })
+        }
+    }
+    $a['ArgumentList'] = @($Target)
+    return Invoke-Command @a
+}
+'@
+
+# ==============================================================================
+#  WORKER: scan
+# ==============================================================================
+# Read-only. Answers the question the tool opens with: which of the eight are
+# patched and waiting for a restart, and is each one safe to restart right now.
+$scanWorkerBody = @'
+param($Sync, [string]$Server, [string]$Site, [string]$Role, $Credential,
+      [string[]]$ExchangeCandidates, [int]$QueueThreshold, [int]$CopyQueueThreshold,
+      [int]$ReplayQueueThreshold, [int]$HotfixMaxAgeDays)
+
+$session = $null
+try {
+    Post-Field $Sync $Server 'Phase' 'Scanning'
+
+    $reach = Test-ServerOnlineDetail -ComputerName $Server -Credential $Credential
+    if (-not $reach.Online) {
+        Post-Field $Sync $Server 'Reachable' 'NO'
+        # UNREACHABLE, not DOWN. DOWN is yellow because it is the expected
+        # state of a server this tool has just restarted; a server that is
+        # unreachable when nobody asked it to be is a red problem.
+        Post-Field $Sync $Server 'Boot'       'UNREACHABLE'
+        Post-Check $Sync $Server 'PatchState' 'UNKNOWN'
+        Post-Check $Sync $Server 'Ready'      'UNREACHABLE'
+        Post-Field $Sync $Server 'BlockReason' $reach.Reason
+        Post-Step  $Sync $Server 'Scan' 'WinRM reachability' 'FAILED' $reach.Reason
+        Post $Sync @{ Kind = 'ScanDone'; Server = $Server; Success = $false; Detail = 'Unreachable' }
+        return
+    }
+    Post-Field $Sync $Server 'Reachable' 'YES'
+    Post-Step  $Sync $Server 'Scan' 'WinRM reachability' 'OK' 'Remoting endpoint answered.'
+
+    # Logon readiness is worth knowing before a run as well as after: a server
+    # that WinRM answers for but nobody can RDP to is not one to start a
+    # maintenance window on.
+    $lr = Test-LogonReady -ComputerName $Server -Credential $Credential
+    Post-Field $Sync $Server 'Boot' $(if ($lr.Ready) { 'LOGIN READY' } else { 'SERVICES STARTING' })
+    Post-Step  $Sync $Server 'Scan' 'Accepts a logon' $(if ($lr.Ready) { 'OK' } else { 'WARN' }) $lr.Reason
+
+    # --- patch / reboot state -------------------------------------------------
+    $blockers = New-Object System.Collections.Generic.List[string]
+    $pending  = $null
+    try {
+        $pending = Get-PendingRebootInfo -ComputerName $Server -Credential $Credential
+        $uptime = (Get-Date) - $pending.LastBootTime
+        Post-Field $Sync $Server 'LastBoot' $pending.LastBootTime
+        Post-Field $Sync $Server 'Uptime'   ('{0}d {1}h' -f [int]$uptime.TotalDays, $uptime.Hours)
+
+        if ($pending.LastHotfixDate) {
+            $age = ((Get-Date) - $pending.LastHotfixDate).TotalDays
+            Post-Field $Sync $Server 'LastPatch' ('{0:yyyy-MM-dd} ({1})' -f $pending.LastHotfixDate, $pending.LastHotfixId)
+            Post-Step  $Sync $Server 'Scan' 'Last update installed' $(if ($age -le $HotfixMaxAgeDays) { 'OK' } else { 'WARN' }) `
+                ('{0} installed {1:yyyy-MM-dd}, {2:N0} day(s) ago. {3} update(s) in the last 7 days.' -f `
+                    $pending.LastHotfixId, $pending.LastHotfixDate, $age, $pending.HotfixCount7d)
+        }
+        else {
+            Post-Field $Sync $Server 'LastPatch' 'unknown'
+            Post-Step  $Sync $Server 'Scan' 'Last update installed' 'WARN' 'Get-HotFix returned no dated entries.'
+        }
+
+        if ($pending.PendingReboot) {
+            Post-Check $Sync $Server 'PatchState' 'REBOOT REQUIRED'
+            Post-Step  $Sync $Server 'Scan' 'Pending reboot' 'WARN' ('Patched and waiting for a restart: {0}.' -f $pending.Reasons)
+        }
+        else {
+            Post-Check $Sync $Server 'PatchState' 'NO REBOOT PENDING'
+            Post-Step  $Sync $Server 'Scan' 'Pending reboot' 'OK' 'No pending reboot flags are set.'
+        }
+    }
+    catch {
+        Post-Check $Sync $Server 'PatchState' 'UNKNOWN'
+        Post-Step  $Sync $Server 'Scan' 'Pending reboot' 'FAILED' $_.Exception.Message
+        $blockers.Add('patch state could not be read')
+    }
+
+    # --- services -------------------------------------------------------------
+    try {
+        $svc = Get-ExchangeServiceState -ComputerName $Server -Credential $Credential
+        $coreStopped  = @($svc.CoreStopped)
+        $otherStopped = @($svc.OtherStopped)
+
+        if ($coreStopped.Count -gt 0) {
+            Post-Check $Sync $Server 'Services' 'FAILED'
+            Post-Step  $Sync $Server 'Scan' 'Exchange services' 'FAILED' `
+                ('CORE service(s) not running: {0}. Exchange is not serving mail from this server - fix it before rebooting anything.' -f ($coreStopped -join ', '))
+            $blockers.Add('core Exchange services are stopped: ' + ($coreStopped -join ', '))
+        }
+        elseif ($otherStopped.Count -gt 0) {
+            # Not fatal. These are routinely disabled by policy, and treating
+            # them as a failure makes a READY verdict unreachable for ever.
+            Post-Check $Sync $Server 'Services' 'WARN'
+            Post-Step  $Sync $Server 'Scan' 'Exchange services' 'WARN' `
+                ('All {0} core service(s) running. Non-core automatic service(s) stopped, which is often deliberate: {1}' -f `
+                    $svc.CoreTotal, ($otherStopped -join ', '))
+        }
+        else {
+            Post-Check $Sync $Server 'Services' 'OK'
+            Post-Step  $Sync $Server 'Scan' 'Exchange services' 'OK' `
+                ('{0} core and {1} automatic service(s), all running.' -f $svc.CoreTotal, $svc.AutoTotal)
+        }
+    }
+    catch {
+        Post-Check $Sync $Server 'Services' 'FAILED'
+        Post-Step  $Sync $Server 'Scan' 'Exchange services' 'FAILED' $_.Exception.Message
+        $blockers.Add('services could not be read')
+    }
+
+    # --- Exchange session -----------------------------------------------------
+    if ($Role -ne 'Edge') {
+        # A Microsoft.Exchange endpoint is NoLanguage, so the cmdlets are
+        # imported as local proxies. Only the three the scan needs - importing
+        # more costs seconds per worker and eight of these run at once.
+        $session = New-ExchangeSession -Candidates $ExchangeCandidates -Exclude $Server -Credential $Credential `
+                        -CommandName @('Get-MailboxDatabaseCopyStatus', 'Get-Queue', 'Get-ServerComponentState', 'Get-Mailbox')
+        if (-not $session) {
+            Post-Step $Sync $Server 'Scan' 'Exchange session' 'FAILED' `
+                ('No remote Exchange shell could be opened on any candidate server. Last error - {0}' -f (Get-ExSessionError))
+            $blockers.Add('no Exchange session')
+        }
+        else {
+            Post-Step $Sync $Server 'Scan' 'Exchange session' 'OK' `
+                ('Connected via {0}; cmdlets imported as local proxies.' -f $session.ExchangeServer)
+            if (@($session.MissingCommands).Count -gt 0) {
+                Post-Step $Sync $Server 'Scan' 'Exchange cmdlet access' 'FAILED' `
+                    ('RBAC did not grant: {0}. The account needs a role that includes them.' -f (@($session.MissingCommands) -join ', '))
+                $blockers.Add('missing Exchange cmdlets: ' + (@($session.MissingCommands) -join ', '))
+            }
+        }
+    }
+
+    # --- queues ---------------------------------------------------------------
+    try {
+        $q = Get-QueueSnapshot -ComputerName $Server -Credential $Credential -Session $session -Role $Role
+        $total = [int]$q.Total
+        if ($total -le $QueueThreshold) {
+            Post-Check $Sync $Server 'Queues' 'OK'
+            Post-Step  $Sync $Server 'Scan' 'Transport queues' 'OK' ('{0} message(s) queued (threshold {1}).' -f $total, $QueueThreshold)
+        }
+        else {
+            Post-Check $Sync $Server 'Queues' 'WARN'
+            Post-Step  $Sync $Server 'Scan' 'Transport queues' 'WARN' ('{0} message(s) queued: {1}' -f $total, $q.Detail)
+        }
+    }
+    catch {
+        Post-Check $Sync $Server 'Queues' 'WARN'
+        Post-Step  $Sync $Server 'Scan' 'Transport queues' 'WARN' $_.Exception.Message
+    }
+
+    # --- databases and cluster (mailbox only) ---------------------------------
+    if ($Role -eq 'Edge') {
+        Post-Check $Sync $Server 'Databases' 'n/a'
+        Post-Check $Sync $Server 'Cluster'   'n/a'
+        Post-Check $Sync $Server 'DbMount'   'n/a'
+        Post-Step  $Sync $Server 'Scan' 'Databases / cluster' 'SKIPPED' 'Edge Transport is not a DAG member.'
+    }
+    elseif ($session) {
+        try {
+            $copies = @(Get-CopyStatusSnapshot -Session $session -ComputerName $Server)
+            $active = @($copies | Where-Object { $_.Status -eq 'Mounted' } | ForEach-Object { $_.DatabaseName })
+            $sick   = @($copies | Where-Object {
+                            $_.Status -notin @('Mounted', 'Healthy') -or
+                            $_.CopyQueueLength   -gt $CopyQueueThreshold -or
+                            $_.ReplayQueueLength -gt $ReplayQueueThreshold -or
+                            (Test-CopyIndexBad $_.ContentIndexState)
+                        })
+            Post-Field $Sync $Server 'ActiveDbs' $active
+            Post-Check $Sync $Server 'DbMount' $(if ($active.Count) { 'MOUNTED: {0}' -f $active.Count } else { 'NONE MOUNTED' })
+
+            if ($sick.Count -eq 0) {
+                Post-Check $Sync $Server 'Databases' 'OK'
+                Post-Step  $Sync $Server 'Scan' 'Database copies' 'OK' `
+                    ('{0} copy(ies) healthy; {1} mounted here: {2}' -f $copies.Count, $active.Count, (($active -join ', ')))
+            }
+            else {
+                Post-Check $Sync $Server 'Databases' 'FAILED'
+                Post-Step  $Sync $Server 'Scan' 'Database copies' 'FAILED' `
+                    (($sick | ForEach-Object { '{0} [{1}] CQ={2} RQ={3} CI={4}' -f $_.Name, $_.Status, $_.CopyQueueLength, $_.ReplayQueueLength, $_.ContentIndexState }) -join '; ')
+                $blockers.Add('unhealthy database copies')
+            }
+
+            # The copies that would have to take over: if the partner copy of a
+            # database this server has mounted is not healthy, moving it off is
+            # not actually possible and the reboot must not be offered.
+            $partners = Invoke-Ex -Session $session -ScriptBlock {
+                param($dbs, $srv)
+                foreach ($db in $dbs) {
+                    Get-MailboxDatabaseCopyStatus -Identity "$db\*" -ErrorAction SilentlyContinue |
+                        Where-Object { $_.MailboxServer -ne $srv } |
+                        ForEach-Object {
+                            [pscustomobject]@{
+                                DatabaseName = [string]$_.DatabaseName
+                                Server       = [string]$_.MailboxServer
+                                Status       = [string]$_.Status
+                                CopyQueue    = [int]$_.CopyQueueLength
+                                ReplayQueue  = [int]$_.ReplayQueueLength
+                                Index        = [string]$_.ContentIndexState
+                            }
+                        }
+                }
+            } -ArgumentList @($active, $Server)
+
+            $badPartners = @($partners | Where-Object {
+                                $_.Status -notin @('Healthy', 'Mounted') -or
+                                $_.CopyQueue -gt $CopyQueueThreshold -or $_.ReplayQueue -gt $ReplayQueueThreshold })
+
+            # A database with no copy anywhere else cannot be moved off, so it
+            # DISMOUNTS for the whole reboot. The old code counted zero partner
+            # copies as zero bad partners and reported "every mounted database
+            # has a healthy copy elsewhere (0 partner copies checked)" - a
+            # green tick that literally checked nothing, on exactly the case
+            # that causes an outage. Single-copy databases are now separated
+            # out and judged on whether they actually hold anything.
+            $soloDbs = @($active | Where-Object { $db = $_; -not (@($partners) | Where-Object { $_.DatabaseName -eq $db }) })
+            $soloWithMailboxes = @()
+            foreach ($db in $soloDbs) {
+                try {
+                    $n = Invoke-Ex -Session $session -ScriptBlock {
+                        param($d)
+                        $u = @(Get-Mailbox -Database $d -ResultSize 1 -ErrorAction SilentlyContinue).Count
+                        $a = @(Get-Mailbox -Database $d -Arbitration -ResultSize 1 -ErrorAction SilentlyContinue).Count
+                        return ($u + $a)
+                    } -ArgumentList @($db)
+                    if ([int]$n -gt 0) { $soloWithMailboxes += $db }
+                }
+                catch {
+                    # Cannot prove it is empty, so assume it is not.
+                    $soloWithMailboxes += $db
+                }
+            }
+            $soloEmpty = @($soloDbs | Where-Object { $soloWithMailboxes -notcontains $_ })
+
+            if ($active.Count -gt 0) {
+                $withPartners = @($active | Where-Object { $soloDbs -notcontains $_ })
+                if ($badPartners.Count -gt 0) {
+                    Post-Step $Sync $Server 'Scan' 'Fail-over targets' 'FAILED' `
+                        (($badPartners | ForEach-Object { '{0} on {1} is {2}' -f $_.DatabaseName, $_.Server, $_.Status }) -join '; ')
+                    $blockers.Add('no healthy copy to move the mounted databases to')
+                }
+                elseif ($withPartners.Count -gt 0) {
+                    Post-Step $Sync $Server 'Scan' 'Fail-over targets' 'OK' `
+                        ('{0} database(s) have a healthy copy elsewhere ({1} partner copy(ies) checked): {2}' -f `
+                            $withPartners.Count, @($partners).Count, ($withPartners -join ', '))
+                }
+
+                if ($soloWithMailboxes.Count -gt 0) {
+                    Post-Step $Sync $Server 'Scan' 'Single-copy databases' 'FAILED' `
+                        ('These are mounted here, hold mailboxes, and have NO copy on any other server, so they go OFFLINE for the whole reboot: {0}' -f ($soloWithMailboxes -join ', '))
+                    $blockers.Add('single-copy database(s) with mailboxes would go offline: ' + ($soloWithMailboxes -join ', '))
+                }
+                if ($soloEmpty.Count -gt 0) {
+                    Post-Step $Sync $Server 'Scan' 'Single-copy databases' 'WARN' `
+                        ('Mounted here with no copy elsewhere, but empty, so they only dismount for the reboot: {0}' -f ($soloEmpty -join ', '))
+                }
+            }
+        }
+        catch {
+            Post-Check $Sync $Server 'Databases' 'FAILED'
+            Post-Step  $Sync $Server 'Scan' 'Database copies' 'FAILED' $_.Exception.Message
+            $blockers.Add('database copy status could not be read')
+        }
+
+        # --- cluster ----------------------------------------------------------
+        try {
+            $peer = @($ExchangeCandidates | Where-Object { $_ -ne $Server } | Select-Object -First 1)
+            $cl = Get-ClusterSnapshot -QueryNode $peer[0] -Credential $Credential -Target $Server
+            $isPam = ($cl.CoreOwner -eq $Server)
+            Post-Field $Sync $Server 'WasPam' $isPam
+
+            # Quorum headroom: taking this node down must leave a majority. With
+            # a file share witness the witness counts, which is why the test is
+            # "more than half of all nodes stay up" rather than "at least one".
+            $upAfter = @($cl.UpNodes | Where-Object { $_ -ne $Server }).Count
+            $needed  = [Math]::Floor($cl.AllNodes.Count / 2)
+            if ($cl.TargetState -ne 'Up') {
+                Post-Check $Sync $Server 'Cluster' 'FAILED'
+                Post-Step  $Sync $Server 'Scan' 'Cluster node state' 'FAILED' ('Node state is {0}, expected Up.' -f $cl.TargetState)
+                $blockers.Add('cluster node is not Up')
+            }
+            elseif ($upAfter -lt $needed) {
+                Post-Check $Sync $Server 'Cluster' 'FAILED'
+                Post-Step  $Sync $Server 'Scan' 'Cluster quorum' 'FAILED' `
+                    ('Only {0} of {1} node(s) would remain up - quorum needs at least {2}.' -f $upAfter, $cl.AllNodes.Count, $needed)
+                $blockers.Add('taking this node down risks quorum')
+            }
+            else {
+                Post-Check $Sync $Server 'Cluster' 'OK'
+                Post-Step  $Sync $Server 'Scan' 'Cluster node state' 'OK' `
+                    ('Node is Up. Core group "{0}" is owned by {1}{2}. {3} of {4} node(s) up.' -f `
+                        $cl.CoreGroup, $cl.CoreOwner, $(if ($isPam) { ' - this server holds the PAM' } else { '' }), `
+                        $cl.UpNodes.Count, $cl.AllNodes.Count)
+            }
+            if ($cl.PausedNodes.Count -gt 0) {
+                Post-Step $Sync $Server 'Scan' 'Cluster maintenance' 'WARN' `
+                    ('Node(s) already paused: {0}. Finish or resume those before starting another reboot.' -f ($cl.PausedNodes -join ', '))
+            }
+        }
+        catch {
+            Post-Check $Sync $Server 'Cluster' 'FAILED'
+            Post-Step  $Sync $Server 'Scan' 'Cluster node state' 'FAILED' $_.Exception.Message
+            $blockers.Add('cluster state could not be read')
+        }
+
+        # --- component state --------------------------------------------------
+        try {
+            $comp = Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Get-InactiveComponents (Get-ServerComponentState -Identity $srv -ErrorAction Stop |
+                    Where-Object { [string]$_.State -ne 'Active' }) |
+                    ForEach-Object { '{0}={1}' -f $_.Component, $_.State }
+            } -ArgumentList @($Server)
+            if (@($comp).Count -eq 0) {
+                Post-Step $Sync $Server 'Scan' 'Server component state' 'OK' 'All components are Active.'
+            }
+            else {
+                Post-Step $Sync $Server 'Scan' 'Server component state' 'WARN' `
+                    ('Left in maintenance from an earlier run? {0}' -f (@($comp) -join ', '))
+            }
+        }
+        catch {
+            Post-Step $Sync $Server 'Scan' 'Server component state' 'WARN' $_.Exception.Message
+        }
+    }
+
+    # --- verdict --------------------------------------------------------------
+    if ($blockers.Count -gt 0) {
+        Post-Check $Sync $Server 'Ready' 'BLOCKED'
+        Post-Field $Sync $Server 'BlockReason' ($blockers -join '; ')
+        Post-Step  $Sync $Server 'Scan' 'Verdict' 'FAILED' ('Not safe to reboot: {0}.' -f ($blockers -join '; '))
+    }
+    elseif ($pending -and $pending.PendingReboot) {
+        Post-Check $Sync $Server 'Ready' 'READY'
+        Post-Field $Sync $Server 'BlockReason' ''
+        Post-Step  $Sync $Server 'Scan' 'Verdict' 'OK' 'Patched, healthy, and ready to reboot.'
+    }
+    else {
+        Post-Check $Sync $Server 'Ready' 'NOT NEEDED'
+        Post-Field $Sync $Server 'BlockReason' 'No reboot is pending.'
+        Post-Step  $Sync $Server 'Scan' 'Verdict' 'OK' 'Healthy, and no reboot is pending. Tick Force to reboot anyway.'
+    }
+
+    Post $Sync @{ Kind = 'ScanDone'; Server = $Server; Success = $true; Detail = '' }
+}
+catch {
+    Post-Step $Sync $Server 'Scan' 'Unhandled error' 'FAILED' $_.Exception.Message
+    Post-Check $Sync $Server 'Ready' 'BLOCKED'
+    Post $Sync @{ Kind = 'ScanDone'; Server = $Server; Success = $false; Detail = $_.Exception.Message }
+}
+finally {
+    if ($session) { Remove-PSSession $session -ErrorAction SilentlyContinue }
+    Post-Field $Sync $Server 'Phase' 'Idle'
+}
+'@
+
+# ==============================================================================
+#  WORKER: reboot
+# ==============================================================================
+# The whole post-patch pipeline for one server. Written as one long linear
+# script on purpose: the order of these steps is the safety property, and a
+# reader has to be able to check that order top to bottom without chasing calls.
+$rebootWorkerBody = @'
+param($Sync, [string]$Server, [string]$Site, [string]$Role, $Credential,
+      [string[]]$ExchangeCandidates, [string[]]$SitePeers,
+      [int]$QueueThreshold, [int]$CopyQueueThreshold,
+      [int]$ReplayQueueThreshold, [int]$RebootTimeoutMinutes, [int]$SettleTimeoutMinutes,
+      [int]$DrainTimeoutMinutes, [bool]$Simulate, [bool]$Force, [bool]$RestoreActiveDbs,
+      [bool]$RestorePam)
+
+$session   = $null
+$phase     = 'Pre-flight'
+$failed    = $false
+$failNote  = ''
+$peerNodes = @($ExchangeCandidates | Where-Object { $_ -ne $Server })
+$mode      = if ($Simulate) { 'SIMULATED' } else { 'OK' }
+
+function Fail {
+    param($Sync, $Server, $Phase, $Step, $Message)
+    Post-Step $Sync $Server $Phase $Step 'FAILED' $Message
+    throw $Message
+}
+
+function Do-Step {
+    <#
+        Run one action, or describe it when simulating. Every state changing
+        call in this worker goes through here, which is what makes Simulate
+        trustworthy: there is no second path that could still touch a server.
+    #>
+    param($Sync, $Server, $Phase, $Step, [scriptblock]$Action, [bool]$Simulate,
+          [string]$Describe = '', [bool]$Critical = $true)
+
+    Post-Step $Sync $Server $Phase $Step 'RUNNING...' $Describe
+    if ($Simulate) {
+        Post-Step $Sync $Server $Phase $Step 'SIMULATED' $(if ($Describe) { $Describe } else { 'Not executed - Simulate is on.' })
+        return $null
+    }
+    try {
+        $r = & $Action
+        Post-Step $Sync $Server $Phase $Step 'OK' $Describe
+        return $r
+    }
+    catch {
+        $msg = $_.Exception.Message
+        if ($Critical) {
+            Post-Step $Sync $Server $Phase $Step 'FAILED' $msg
+            throw $msg
+        }
+        Post-Step $Sync $Server $Phase $Step 'WARN' ('Non-critical: {0}' -f $msg)
+        return $null
+    }
+}
+
+try {
+    Post-Field $Sync $Server 'Started' (Get-Date)
+    Post-Field $Sync $Server 'Result'  'RUNNING...'
+    foreach ($c in @('Services', 'Databases', 'Queues', 'Cluster')) { Post-Check $Sync $Server $c 'PENDING' }
+    if ($Role -eq 'Edge') {
+        Post-Check $Sync $Server 'Databases' 'n/a'
+        Post-Check $Sync $Server 'Cluster'   'n/a'
+        Post-Check $Sync $Server 'DbMount'   'n/a'
+    }
+
+    # ==========================================================================
+    #  1. PRE-FLIGHT
+    # ==========================================================================
+    $phase = 'Pre-flight'
+    Post-Field $Sync $Server 'Phase' $phase
+
+    $reach = Test-ServerOnlineDetail -ComputerName $Server -Credential $Credential
+    if (-not $reach.Online) {
+        Fail $Sync $Server $phase 'WinRM reachability' ('Refusing to start - {0}' -f $reach.Reason)
+    }
+    Post-Step $Sync $Server $phase 'WinRM reachability' 'OK' 'Remoting endpoint answered.'
+
+    $pending = Get-PendingRebootInfo -ComputerName $Server -Credential $Credential
+    $bootBefore = $pending.LastBootTime
+    Post-Field $Sync $Server 'LastBoot' $bootBefore
+    if (-not $pending.PendingReboot -and -not $Force) {
+        Fail $Sync $Server $phase 'Pending reboot' 'No reboot is pending on this server. Tick Force to override.'
+    }
+    Post-Step $Sync $Server $phase 'Pending reboot' 'OK' `
+        $(if ($pending.PendingReboot) { 'Patched and waiting for a restart: ' + $pending.Reasons }
+          else { 'No reboot pending - proceeding because Force is on.' })
+
+    # Every Exchange cmdlet this pipeline uses, imported once as local proxies.
+    # If RBAC withholds one of them, that is found out HERE, before any
+    # maintenance has been entered - not halfway through, with the databases
+    # already moved off and the node suspended.
+    $exCommands = @(
+        'Get-MailboxDatabaseCopyStatus', 'Get-Queue', 'Get-ServerComponentState',
+        'Set-ServerComponentState', 'Set-MailboxServer', 'Move-ActiveMailboxDatabase',
+        'Redirect-Message', 'Test-ServiceHealth', 'Test-ReplicationHealth', 'Test-MapiConnectivity', 'Get-Mailbox'
+    )
+
+    if ($Role -ne 'Edge') {
+        $session = New-ExchangeSession -Candidates $ExchangeCandidates -Exclude $Server `
+                        -Credential $Credential -CommandName $exCommands
+        if (-not $session) {
+            Fail $Sync $Server $phase 'Exchange session' `
+                ('No remote Exchange shell could be opened on a server other than the one being rebooted. Last error - {0}' -f (Get-ExSessionError))
+        }
+        Post-Step $Sync $Server $phase 'Exchange session' 'OK' `
+            ('Connected via {0}; cmdlets imported as local proxies.' -f $session.ExchangeServer)
+        if (@($session.MissingCommands).Count -gt 0) {
+            Fail $Sync $Server $phase 'Exchange cmdlet access' `
+                ('RBAC did not grant these cmdlets, so the maintenance steps could not be reversed later: {0}' -f (@($session.MissingCommands) -join ', '))
+        }
+    }
+
+    $activeDbs = @()
+    $wasPam    = $false
+    $coreGroup = $null
+
+    if ($Role -ne 'Edge') {
+        $copies = @(Get-CopyStatusSnapshot -Session $session -ComputerName $Server)
+        $activeDbs = @($copies | Where-Object { $_.Status -eq 'Mounted' } | ForEach-Object { $_.DatabaseName })
+        Post-Field $Sync $Server 'ActiveDbs' $activeDbs
+        Post-Check $Sync $Server 'DbMount' $(if ($activeDbs.Count) { 'MOUNTED: {0}' -f $activeDbs.Count } else { 'NONE MOUNTED' })
+        Post-Step  $Sync $Server $phase 'Active databases recorded' 'OK' `
+            $(if ($activeDbs.Count) { 'Mounted here and to be returned afterwards: ' + ($activeDbs -join ', ') }
+              else { 'No databases are mounted on this server.' })
+
+        $sick = @($copies | Where-Object {
+                    $_.Status -notin @('Mounted', 'Healthy') -or
+                    $_.CopyQueueLength -gt $CopyQueueThreshold -or $_.ReplayQueueLength -gt $ReplayQueueThreshold })
+        if ($sick.Count -gt 0 -and -not $Force) {
+            Fail $Sync $Server $phase 'Copy health' `
+                ('Unhealthy copies on this server: ' + (($sick | ForEach-Object { '{0}[{1}]' -f $_.Name, $_.Status }) -join ', '))
+        }
+
+        $cl = Get-ClusterSnapshot -QueryNode $peerNodes[0] -Credential $Credential -Target $Server
+        $wasPam    = ($cl.CoreOwner -eq $Server)
+        $coreGroup = $cl.CoreGroup
+        Post-Field $Sync $Server 'WasPam' $wasPam
+        $upAfter = @($cl.UpNodes | Where-Object { $_ -ne $Server }).Count
+        $needed  = [Math]::Floor($cl.AllNodes.Count / 2)
+        if ($upAfter -lt $needed -and -not $Force) {
+            Fail $Sync $Server $phase 'Cluster quorum' `
+                ('Only {0} of {1} node(s) would stay up; quorum needs at least {2}.' -f $upAfter, $cl.AllNodes.Count, $needed)
+        }
+        Post-Step $Sync $Server $phase 'Cluster quorum' 'OK' `
+            ('{0} of {1} node(s) stay up. Core group "{2}" owner: {3}.' -f $upAfter, $cl.AllNodes.Count, $coreGroup, $cl.CoreOwner)
+    }
+
+    # ==========================================================================
+    #  2. MAINTENANCE MODE
+    # ==========================================================================
+    $phase = 'Maintenance'
+    Post-Field $Sync $Server 'Phase' $phase
+
+    # Transport first, for both roles. Draining lets in-flight messages finish
+    # and stops new ones arriving, so the queue drain that follows can actually
+    # reach zero instead of chasing a moving target.
+    $drainTransport = {
+        Invoke-Ex -Session $session -ScriptBlock {
+            param($srv)
+            Set-ServerComponentState -Identity $srv -Component HubTransport -State Draining -Requester Maintenance -ErrorAction Stop
+        } -ArgumentList @($Server)
+    }
+    if ($Role -eq 'Edge') {
+        $drainTransport = {
+            Invoke-LocalEx -ComputerName $Server -Credential $Credential -ScriptBlock {
+                param($srv)
+                Set-ServerComponentState -Identity $srv -Component HubTransport -State Draining -Requester Maintenance -ErrorAction Stop
+            } -ArgumentList @($Server)
+        }
+    }
+    Do-Step $Sync $Server $phase 'HubTransport -> Draining' $drainTransport $Simulate `
+        'New messages are refused; queued messages keep being delivered.' $true | Out-Null
+
+    Do-Step $Sync $Server $phase 'Restart MSExchangeTransport' {
+        $a = Get-RemoteArgs $Server $Credential
+        $a['ScriptBlock'] = { Restart-Service MSExchangeTransport -Force -ErrorAction Stop }
+        Invoke-Command @a
+    } $Simulate 'Picks up the draining state immediately rather than at the next poll.' $false | Out-Null
+
+    if ($Role -ne 'Edge') {
+        # SAME SITE FIRST, and the site membership is PASSED IN rather than
+        # re-derived here. The worker used to read it out of the hostname with
+        # a regex, which meant the one naming convention this toolkit is not
+        # allowed to know about lived in a here-string, and it would silently
+        # send a redirect across data centres at any tenant whose names did
+        # not match. $SitePeers is the declared answer from Tenant.json.
+        $redirectTarget = @($SitePeers | Where-Object { $peerNodes -contains $_ } | Select-Object -First 1)
+        if (-not $redirectTarget -or -not $redirectTarget[0]) { $redirectTarget = @($peerNodes | Select-Object -First 1) }
+        Do-Step $Sync $Server $phase 'Redirect queued messages' {
+            Invoke-Ex -Session $session -ScriptBlock {
+                param($srv, $tgt)
+                Redirect-Message -Server $srv -Target $tgt -Confirm:$false -ErrorAction Stop
+            } -ArgumentList @($Server, $redirectTarget[0])
+        } $Simulate ('Hands the submission queue to {0} so nothing waits on this server while it is down.' -f $redirectTarget[0]) $false | Out-Null
+    }
+
+    # Wait for the queues to fall under the threshold. Bounded: a stuck queue
+    # must not hold a maintenance window open indefinitely, so it becomes a
+    # visible warning and the run carries on.
+    $deadline = (Get-Date).AddMinutes($DrainTimeoutMinutes)
+    if ($Simulate) {
+        Post-Step $Sync $Server $phase 'Drain transport queues' 'SIMULATED' 'Not executed - Simulate is on.'
+    }
+    else {
+        Post-Step $Sync $Server $phase 'Drain transport queues' 'RUNNING...' ('Waiting up to {0} minute(s).' -f $DrainTimeoutMinutes)
+        $drained = $false
+        while ((Get-Date) -lt $deadline -and -not $Sync.Cancel) {
+            try {
+                $q = Get-QueueSnapshot -ComputerName $Server -Credential $Credential -Session $session -Role $Role
+                if ([int]$q.Total -le $QueueThreshold) {
+                    $drained = $true
+                    Post-Step $Sync $Server $phase 'Drain transport queues' 'OK' ('{0} message(s) left, at or under the threshold of {1}.' -f [int]$q.Total, $QueueThreshold)
+                    break
+                }
+                Post-Step $Sync $Server $phase 'Drain transport queues' 'RUNNING...' ('{0} message(s) still queued: {1}' -f [int]$q.Total, $q.Detail)
+            }
+            catch {
+                Post-Step $Sync $Server $phase 'Drain transport queues' 'WARN' $_.Exception.Message
+            }
+            Start-Sleep -Seconds 15
+        }
+        if (-not $drained -and -not $Sync.Cancel) {
+            Post-Step $Sync $Server $phase 'Drain transport queues' 'WARN' `
+                ('Queues did not fall under {0} within {1} minute(s). Continuing - shadow redundancy protects the messages that are left.' -f $QueueThreshold, $DrainTimeoutMinutes)
+        }
+    }
+    if ($Sync.Cancel) { throw 'Cancelled by the operator.' }
+
+    if ($Role -ne 'Edge') {
+        # PAM before anything else that touches the cluster: moving the core
+        # group while the node is being suspended is how you get a fail-over you
+        # did not choose the timing of.
+        if ($wasPam) {
+            $pamTarget = @($peerNodes | Select-Object -First 1)
+            Do-Step $Sync $Server $phase 'Move cluster core group (PAM)' {
+                $a = Get-RemoteArgs $peerNodes[0] $Credential
+                $a['ScriptBlock'] = {
+                    param($grp, $tgt)
+                    Import-Module FailoverClusters -ErrorAction Stop
+                    Move-ClusterGroup -Name $grp -Node $tgt -ErrorAction Stop | Out-Null
+                }
+                $a['ArgumentList'] = @($coreGroup, $pamTarget[0])
+                Invoke-Command @a
+            } $Simulate ('This node holds the Primary Active Manager; moving "{0}" to {1}.' -f $coreGroup, $pamTarget[0]) $true | Out-Null
+        }
+        else {
+            Post-Step $Sync $Server $phase 'Move cluster core group (PAM)' 'SKIPPED' 'This node does not own the core cluster group.'
+        }
+
+        Do-Step $Sync $Server $phase 'Block database activation' {
+            Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Set-MailboxServer -Identity $srv -DatabaseCopyAutoActivationPolicy Blocked -ErrorAction Stop
+            } -ArgumentList @($Server)
+        } $Simulate 'Stops the Active Manager activating a copy back onto this server while it restarts.' $true | Out-Null
+
+        Do-Step $Sync $Server $phase 'Move active databases off' {
+            Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Set-MailboxServer -Identity $srv -DatabaseCopyActivationDisabledAndMoveNow $true -ErrorAction Stop
+            } -ArgumentList @($Server)
+        } $Simulate 'DatabaseCopyActivationDisabledAndMoveNow moves everything that is mounted here.' $true | Out-Null
+
+        foreach ($db in $activeDbs) {
+            Do-Step $Sync $Server $phase ('Move database {0}' -f $db) {
+                Invoke-Ex -Session $session -ScriptBlock {
+                    param($d, $srv)
+                    # No -ActivateOnServer: Active Manager picks the best copy.
+                    # Naming a target here would override the copy the DAG has
+                    # decided is the healthiest, which is the opposite of what
+                    # is wanted while evacuating a server.
+                    Move-ActiveMailboxDatabase -Identity $d -SkipClientExperienceChecks `
+                        -Confirm:$false -ErrorAction Stop | Out-Null
+                } -ArgumentList @($db, $Server)
+            } $Simulate ('Explicit move so a database that ignored the bulk move is still handled.') $false | Out-Null
+        }
+
+        Do-Step $Sync $Server $phase 'Suspend cluster node' {
+            $a = Get-RemoteArgs $peerNodes[0] $Credential
+            $a['ScriptBlock'] = {
+                param($n)
+                Import-Module FailoverClusters -ErrorAction Stop
+                Suspend-ClusterNode -Name $n -ErrorAction Stop | Out-Null
+            }
+            $a['ArgumentList'] = @($Server)
+            Invoke-Command @a
+        } $Simulate 'Paused nodes are not considered for placement while the server is down.' $true | Out-Null
+
+        # ---- HARD GATE -------------------------------------------------------
+        # Everything above is reversible. The reboot is not, so it does not
+        # happen until the two things that would cause an outage are proven
+        # false: a database still mounted here, or this node still owning the
+        # cluster. Force does not skip this - it is the whole point of the tool.
+        if ($Simulate) {
+            Post-Step $Sync $Server $phase 'GATE: safe to reboot' 'SIMULATED' 'Would verify zero mounted databases and that the core group has moved.'
+        }
+        else {
+            $gateDeadline = (Get-Date).AddMinutes(10)
+            $gateOk = $false
+            $gateWhy = ''
+            while ((Get-Date) -lt $gateDeadline -and -not $Sync.Cancel) {
+                try {
+                    $still = @(Get-CopyStatusSnapshot -Session $session -ComputerName $Server |
+                                Where-Object { $_.Status -eq 'Mounted' } | ForEach-Object { $_.DatabaseName })
+                    $cl2 = Get-ClusterSnapshot -QueryNode $peerNodes[0] -Credential $Credential -Target $Server
+                    if ($still.Count -eq 0 -and $cl2.CoreOwner -ne $Server) { $gateOk = $true; break }
+                    $gateWhy = ''
+                    if ($still.Count -gt 0)            { $gateWhy += ('still mounted: ' + ($still -join ', ') + '. ') }
+                    if ($cl2.CoreOwner -eq $Server)    { $gateWhy += 'still owns the cluster core group. ' }
+                    Post-Step $Sync $Server $phase 'GATE: safe to reboot' 'RUNNING...' $gateWhy
+                }
+                catch { $gateWhy = $_.Exception.Message }
+                Start-Sleep -Seconds 10
+            }
+            if (-not $gateOk) {
+                Fail $Sync $Server $phase 'GATE: safe to reboot' `
+                    ('Refusing to reboot: ' + $(if ($gateWhy) { $gateWhy } else { 'the safety check did not pass.' }))
+            }
+            Post-Step $Sync $Server $phase 'GATE: safe to reboot' 'OK' 'No mounted databases and the cluster core group is elsewhere.'
+        }
+        Post-Check $Sync $Server 'DbMount' $(if ($Simulate) { 'SIMULATED' } else { 'MOVED OFF' })
+
+        Do-Step $Sync $Server $phase 'ServerWideOffline -> Inactive' {
+            Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Set-ServerComponentState -Identity $srv -Component ServerWideOffline -State Inactive -Requester Maintenance -ErrorAction Stop
+            } -ArgumentList @($Server)
+        } $Simulate 'Takes the whole server out of service - the last step of Exchange maintenance mode.' $true | Out-Null
+
+        Post-Check $Sync $Server 'Databases' 'MAINTENANCE'
+        Post-Check $Sync $Server 'Cluster'   'MAINTENANCE'
+    }
+
+    # ==========================================================================
+    #  3. REBOOT
+    # ==========================================================================
+    $phase = 'Reboot'
+    Post-Field $Sync $Server 'Phase' $phase
+    Post-Check $Sync $Server 'Services' 'PENDING'
+
+    if ($Simulate) {
+        Post-Step  $Sync $Server $phase 'Restart the server' 'SIMULATED' 'Not executed - Simulate is on.'
+        Post-Step  $Sync $Server $phase 'Wait for the server to return' 'SIMULATED' 'Not executed - Simulate is on.'
+        Post-Step  $Sync $Server $phase 'Wait until the server accepts a logon' 'SIMULATED' 'Not executed - Simulate is on.'
+        Post-Field $Sync $Server 'Boot' 'SIMULATED'
+    }
+    else {
+        Post-Step $Sync $Server $phase 'Restart the server' 'RUNNING...' ('Boot time before the restart: {0:yyyy-MM-dd HH:mm:ss}.' -f $bootBefore)
+        $restarted = $false
+        try {
+            $p = @{ ComputerName = $Server; Force = $true; Protocol = 'WSMan'; ErrorAction = 'Stop' }
+            if ($Credential) { $p['Credential'] = $Credential }
+            Restart-Computer @p
+            $restarted = $true
+        }
+        catch {
+            # Restart-Computer needs the remote registry and DCOM paths open;
+            # shutdown.exe run inside a remoting session needs neither, so it is
+            # the fallback rather than the failure.
+            try {
+                $a = Get-RemoteArgs $Server $Credential
+                $a['ScriptBlock'] = { & shutdown.exe /r /t 5 /f /c "Post-patch reboot from Reboot-ExchangeServers-GUI" }
+                Invoke-Command @a | Out-Null
+                $restarted = $true
+            }
+            catch {
+                Fail $Sync $Server $phase 'Restart the server' ('Both Restart-Computer and shutdown.exe failed: {0}' -f $_.Exception.Message)
+            }
+        }
+        if ($restarted) { Post-Step $Sync $Server $phase 'Restart the server' 'OK' 'Restart command accepted.' }
+
+        # ---- live reboot tracking --------------------------------------------
+        # One state machine, polled every ten seconds, that posts where the
+        # server is the whole way through:
+        #
+        #   SHUTTING DOWN -> DOWN -> BOOTING -> WINRM UP -> LOGIN READY
+        #
+        # It runs until the server will accept a logon, not merely until WinRM
+        # answers. Those are minutes apart on an Exchange server, and the gap is
+        # exactly when somebody decides the tool has hung and starts poking the
+        # box by hand. The elapsed time rides along in the Boot cell so the grid
+        # is visibly still working rather than merely not having failed yet.
+        $rebootStart = Get-Date
+        $deadline    = $rebootStart.AddMinutes($RebootTimeoutMinutes)
+        $stage       = 'SHUTTING DOWN'
+        $wentDown    = $false
+        $back        = $false
+        $loginReady  = $false
+        $lastReason  = ''
+        Post-Field $Sync $Server 'Reachable' 'GOING DOWN'
+        Post-Field $Sync $Server 'Boot' 'SHUTTING DOWN 0:00'
+        Post-Step  $Sync $Server $phase 'Wait for the server to go down' 'RUNNING...' 'Watching for the server to stop responding.'
+
+        while ((Get-Date) -lt $deadline -and -not $Sync.Cancel) {
+            $span = (Get-Date) - $rebootStart
+            $el = '{0}:{1:00}' -f [int]$span.TotalMinutes, $span.Seconds
+            $ping = Test-Connection -ComputerName $Server -Count 1 -Quiet -ErrorAction SilentlyContinue
+
+            if (-not $wentDown -and -not $ping) {
+                $wentDown = $true
+                $stage = 'DOWN'
+                Post-Field $Sync $Server 'Reachable' 'NO'
+                Post-Step  $Sync $Server $phase 'Wait for the server to go down' 'OK' `
+                    ('The server stopped responding after {0}, as expected.' -f $el)
+            }
+            if ($wentDown -and $ping -and $stage -eq 'DOWN') {
+                $stage = 'BOOTING'
+                Post-Step $Sync $Server $phase 'Server is booting' 'OK' `
+                    ('It answers ICMP again after {0}. Waiting for the logon stack.' -f $el)
+            }
+
+            if (-not $back) {
+                # A new boot time is the only proof the reboot happened - uptime
+                # alone is satisfied by a server that never restarted. The grace
+                # period stops us reading the OLD boot time off the session that
+                # is about to die and declaring victory.
+                if ($span.TotalSeconds -gt 45 -and (Test-ServerOnline -ComputerName $Server -Credential $Credential -TimeoutSeconds 10)) {
+                    try {
+                        $now = Get-PendingRebootInfo -ComputerName $Server -Credential $Credential
+                        if ($now.LastBootTime -gt $bootBefore) {
+                            $back = $true
+                            $stage = 'WINRM UP'
+                            Post-Field $Sync $Server 'Reachable' 'YES'
+                            Post-Field $Sync $Server 'LastBoot' $now.LastBootTime
+                            $up = (Get-Date) - $now.LastBootTime
+                            Post-Field $Sync $Server 'Uptime' ('{0}h {1}m' -f [int]$up.TotalHours, $up.Minutes)
+                            Post-Step  $Sync $Server $phase 'Wait for the server to return' 'OK' `
+                                ('Back after {0}. New boot time {1:yyyy-MM-dd HH:mm:ss}.' -f $el, $now.LastBootTime)
+                            if (-not $wentDown) {
+                                Post-Step $Sync $Server $phase 'Wait for the server to go down' 'WARN' `
+                                    'It never stopped answering ICMP, but the boot time changed, so the restart did happen.'
+                                $wentDown = $true
+                            }
+                            if ($now.PendingReboot) {
+                                Post-Step $Sync $Server $phase 'Pending reboot cleared' 'WARN' `
+                                    ('A reboot is STILL pending: {0}. The patch run may not be complete.' -f $now.Reasons)
+                            }
+                            else {
+                                Post-Step $Sync $Server $phase 'Pending reboot cleared' 'OK' 'No pending reboot flags remain.'
+                            }
+                            Post-Step $Sync $Server $phase 'Wait until the server accepts a logon' 'RUNNING...' `
+                                'WinRM answers; checking the logon services and RDP.'
+                        }
+                    }
+                    catch { }
+                }
+            }
+            else {
+                $lr = Test-LogonReady -ComputerName $Server -Credential $Credential
+                if ($lr.Ready) {
+                    $loginReady = $true
+                    $stage = 'LOGIN READY'
+                    Post-Step $Sync $Server $phase 'Wait until the server accepts a logon' 'OK' `
+                        ('Ready to log on after {0}. {1}' -f $el, $lr.Reason)
+                }
+                else {
+                    $stage = 'SERVICES STARTING'
+                    if ($lr.Reason -ne $lastReason) {
+                        $lastReason = $lr.Reason
+                        Post-Step $Sync $Server $phase 'Wait until the server accepts a logon' 'RUNNING...' $lr.Reason
+                    }
+                }
+            }
+
+            Post-Field $Sync $Server 'Boot' ('{0} {1}' -f $stage, $el)
+            if ($loginReady) { break }
+            Start-Sleep -Seconds 10
+        }
+
+        if (-not $back) {
+            Post-Field $Sync $Server 'Boot' 'LOST'
+            Fail $Sync $Server $phase 'Wait for the server to return' `
+                ('The server did not come back with a new boot time within {0} minute(s). It is still in maintenance mode - do not reboot anything else in {1}.' -f $RebootTimeoutMinutes, $Site)
+        }
+        if (-not $loginReady) {
+            # WinRM is up and the boot time changed, so the reboot worked and
+            # the checks below can run. Not being able to log on yet is worth
+            # saying out loud rather than quietly moving on.
+            Post-Field $Sync $Server 'Boot' 'WINRM UP - NO LOGON'
+            Post-Step  $Sync $Server $phase 'Wait until the server accepts a logon' 'WARN' `
+                ('The server is back and answering WinRM, but was not ready for a logon within {0} minute(s): {1}' -f $RebootTimeoutMinutes, $lastReason)
+        }
+    }
+    if ($Sync.Cancel) { throw 'Cancelled by the operator.' }
+
+    # ==========================================================================
+    #  4. SERVICES
+    # ==========================================================================
+    $phase = 'Post-checks'
+    Post-Field $Sync $Server 'Phase' $phase
+
+    if ($Simulate) {
+        Post-Step  $Sync $Server $phase 'Exchange services' 'SIMULATED' 'Not executed - Simulate is on.'
+        Post-Check $Sync $Server 'Services' 'SIMULATED'
+    }
+    else {
+        $svcDeadline = (Get-Date).AddMinutes($SettleTimeoutMinutes)
+        $svcOk = $false
+        $nudged = $false
+        $lastStopped = @()
+        $lastCore = @()
+        Post-Step $Sync $Server $phase 'Exchange services' 'RUNNING...' ('Waiting up to {0} minute(s) for every automatic service to start.' -f $SettleTimeoutMinutes)
+        while ((Get-Date) -lt $svcDeadline -and -not $Sync.Cancel) {
+            try {
+                $svc = Get-ExchangeServiceState -ComputerName $Server -Credential $Credential
+                $lastStopped = @($svc.StoppedList)
+                # Only the CORE services gate the run. Waiting for services
+                # the org deliberately leaves stopped would burn the whole
+                # settle window and then fail a server that is actually fine.
+                $lastCore = @($svc.CoreStopped)
+                if ($lastCore.Count -eq 0) {
+                    $svcOk = $true
+                    if (@($svc.OtherStopped).Count -gt 0) {
+                        Post-Step  $Sync $Server $phase 'Exchange services' 'WARN' `
+                            ('All {0} core service(s) running. Non-core still stopped, often deliberate: {1}' -f $svc.CoreTotal, (@($svc.OtherStopped) -join ', '))
+                        Post-Check $Sync $Server 'Services' 'WARN'
+                    }
+                    else {
+                        Post-Step  $Sync $Server $phase 'Exchange services' 'OK' ('All {0} core and {1} automatic service(s) are running.' -f $svc.CoreTotal, $svc.AutoTotal)
+                        Post-Check $Sync $Server 'Services' 'OK'
+                    }
+                    break
+                }
+                Post-Step $Sync $Server $phase 'Exchange services' 'RUNNING...' ('Core still stopped: {0}' -f ($lastCore -join ', '))
+                # One nudge, halfway through the window. Exchange services have
+                # long dependency chains and one can lose a race at boot; a
+                # service that will not start on a second try is a real fault.
+                if (-not $nudged -and (Get-Date) -gt (Get-Date).AddMinutes(-1).AddMinutes($SettleTimeoutMinutes / 2)) {
+                    $nudged = $true
+                    $bad = Start-StoppedExchangeServices -ComputerName $Server -Credential $Credential -Names $lastStopped
+                    Post-Step $Sync $Server $phase 'Start stopped services' $(if (@($bad).Count -eq 0) { 'OK' } else { 'WARN' }) `
+                        $(if (@($bad).Count -eq 0) { 'Issued Start-Service for: ' + ($lastStopped -join ', ') } else { (@($bad) -join '; ') })
+                }
+            }
+            catch {
+                Post-Step $Sync $Server $phase 'Exchange services' 'RUNNING...' ('Not answering yet: {0}' -f $_.Exception.Message)
+            }
+            Start-Sleep -Seconds 20
+        }
+        if (-not $svcOk) {
+            Post-Check $Sync $Server 'Services' 'FAILED'
+            Fail $Sync $Server $phase 'Exchange services' `
+                ('Core service(s) still not running after {0} minute(s): {1}' -f $SettleTimeoutMinutes, (@($lastCore) -join ', '))
+        }
+    }
+    if ($Sync.Cancel) { throw 'Cancelled by the operator.' }
+
+    # ==========================================================================
+    #  5. EXIT MAINTENANCE MODE
+    # ==========================================================================
+    # Reverse order of the way it was entered, and only once the services are
+    # up: putting the server back in service before Exchange is listening is how
+    # a reboot turns into a user-visible outage.
+    $phase = 'Exit maintenance'
+    Post-Field $Sync $Server 'Phase' $phase
+
+    if ($Role -ne 'Edge') {
+        if ($session -and $session.State -ne 'Opened') { $session = $null }
+        if (-not $session -and -not $Simulate) {
+            $session = New-ExchangeSession -Candidates $ExchangeCandidates -Exclude $Server `
+                            -Credential $Credential -CommandName $exCommands
+            if (-not $session) {
+                Fail $Sync $Server $phase 'Exchange session' `
+                    ('Lost the Exchange session and could not reopen it - the server is STILL IN MAINTENANCE MODE and needs finishing by hand. Last error - {0}' -f (Get-ExSessionError))
+            }
+        }
+
+        Do-Step $Sync $Server $phase 'ServerWideOffline -> Active' {
+            Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Set-ServerComponentState -Identity $srv -Component ServerWideOffline -State Active -Requester Maintenance -ErrorAction Stop
+            } -ArgumentList @($Server)
+        } $Simulate 'Puts the server back in service.' $true | Out-Null
+
+        Do-Step $Sync $Server $phase 'Resume cluster node' {
+            $a = Get-RemoteArgs $peerNodes[0] $Credential
+            $a['ScriptBlock'] = {
+                param($n)
+                Import-Module FailoverClusters -ErrorAction Stop
+                Resume-ClusterNode -Name $n -ErrorAction Stop | Out-Null
+            }
+            $a['ArgumentList'] = @($Server)
+            Invoke-Command @a
+        } $Simulate 'Failback of groups is not requested here - databases are moved back explicitly below.' $true | Out-Null
+
+        Do-Step $Sync $Server $phase 'Re-enable database activation' {
+            Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Set-MailboxServer -Identity $srv -DatabaseCopyActivationDisabledAndMoveNow $false -ErrorAction Stop
+                Set-MailboxServer -Identity $srv -DatabaseCopyAutoActivationPolicy Unrestricted -ErrorAction Stop
+            } -ArgumentList @($Server)
+        } $Simulate 'Both the move-now flag and the activation policy are cleared.' $true | Out-Null
+
+        Do-Step $Sync $Server $phase 'HubTransport -> Active' {
+            Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Set-ServerComponentState -Identity $srv -Component HubTransport -State Active -Requester Maintenance -ErrorAction Stop
+            } -ArgumentList @($Server)
+        } $Simulate 'Transport starts accepting messages again.' $true | Out-Null
+
+        Do-Step $Sync $Server $phase 'Restart MSExchangeTransport' {
+            $a = Get-RemoteArgs $Server $Credential
+            $a['ScriptBlock'] = { Restart-Service MSExchangeTransport -Force -ErrorAction Stop }
+            Invoke-Command @a
+        } $Simulate 'Applies the Active state immediately.' $false | Out-Null
+
+        # Belt and braces: anything still Inactive is put back with the stock
+        # script, which also clears requesters this tool did not set.
+        Do-Step $Sync $Server $phase 'Clear any remaining maintenance state' {
+            $left = Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Get-InactiveComponents (Get-ServerComponentState -Identity $srv -ErrorAction Stop |
+                    Where-Object { [string]$_.State -ne 'Active' }) | ForEach-Object { [string]$_.Component }
+            } -ArgumentList @($Server)
+            if (@($left).Count -gt 0) {
+                $a = Get-RemoteArgs $Server $Credential
+                $a['ScriptBlock'] = {
+                    param($srv)
+                    $p = Join-Path $env:ExchangeInstallPath 'Scripts\StopDagServerMaintenance.ps1'
+                    if (Test-Path $p) {
+                        $sn = Get-PSSnapin -Registered | Where-Object { $_.Name -like 'Microsoft.Exchange.Management.PowerShell*' } | Select-Object -First 1
+                        if ($sn -and -not (Get-Command Get-MailboxServer -ErrorAction SilentlyContinue)) { Add-PSSnapin $sn.Name }
+                        & $p -serverName $srv
+                        return 'StopDagServerMaintenance.ps1 ran.'
+                    }
+                    return 'StopDagServerMaintenance.ps1 was not found.'
+                }
+                $a['ArgumentList'] = @($Server)
+                Invoke-Command @a | Out-Null
+            }
+        } $Simulate 'Falls back to the shipped StopDagServerMaintenance.ps1 if any component is still inactive.' $false | Out-Null
+    }
+    else {
+        Do-Step $Sync $Server $phase 'HubTransport -> Active' {
+            Invoke-LocalEx -ComputerName $Server -Credential $Credential -ScriptBlock {
+                param($srv)
+                Set-ServerComponentState -Identity $srv -Component HubTransport -State Active -Requester Maintenance -ErrorAction Stop
+            } -ArgumentList @($Server)
+        } $Simulate 'Edge transport starts accepting messages again.' $true | Out-Null
+    }
+
+    # ==========================================================================
+    #  6. RESTORE DATABASES AND THE CLUSTER
+    # ==========================================================================
+    if ($Role -ne 'Edge') {
+        $phase = 'Restore'
+        Post-Field $Sync $Server 'Phase' $phase
+
+        # Copies must be caught up before anything is activated on them, or the
+        # move either refuses or mounts a copy that is behind.
+        if ($Simulate) {
+            Post-Step $Sync $Server $phase 'Wait for copies to catch up' 'SIMULATED' 'Not executed - Simulate is on.'
+        }
+        else {
+            Post-Step $Sync $Server $phase 'Wait for copies to catch up' 'RUNNING...' ('Waiting up to {0} minute(s).' -f $SettleTimeoutMinutes)
+            $copyBy = (Get-Date).AddMinutes($SettleTimeoutMinutes)
+            $copyOk = $false
+            $copyWhy = ''
+            while ((Get-Date) -lt $copyBy -and -not $Sync.Cancel) {
+                try {
+                    $cs = @(Get-CopyStatusSnapshot -Session $session -ComputerName $Server)
+                    $bad = @($cs | Where-Object {
+                                $_.Status -notin @('Healthy', 'Mounted') -or
+                                $_.CopyQueueLength -gt $CopyQueueThreshold -or
+                                $_.ReplayQueueLength -gt $ReplayQueueThreshold })
+                    if ($bad.Count -eq 0) {
+                        $copyOk = $true
+                        Post-Step $Sync $Server $phase 'Wait for copies to catch up' 'OK' ('All {0} copy(ies) healthy and caught up.' -f $cs.Count)
+                        # The moment the operator is waiting for on a DAG
+                        # member: the copies here are caught up, so the
+                        # databases can safely be activated on this server
+                        # again. Said in the grid, not just the step log.
+                        Post-Check $Sync $Server 'DbMount' $(if ($activeDbs.Count) { 'READY TO MOVE BACK' } else { 'NONE MOUNTED' })
+                        Post-Step  $Sync $Server $phase 'Ready to move databases back' 'OK' `
+                            $(if ($activeDbs.Count) { 'All copies healthy - {0} can take {1} back: {2}' -f $Server, $activeDbs.Count, ($activeDbs -join ', ') }
+                              else { 'All copies healthy. Nothing was mounted here before the reboot, so there is nothing to move back.' })
+                        break
+                    }
+                    $copyWhy = (($bad | ForEach-Object { '{0}[{1}] CQ={2} RQ={3}' -f $_.Name, $_.Status, $_.CopyQueueLength, $_.ReplayQueueLength }) -join '; ')
+                    Post-Step $Sync $Server $phase 'Wait for copies to catch up' 'RUNNING...' $copyWhy
+                }
+                catch { $copyWhy = $_.Exception.Message }
+                Start-Sleep -Seconds 20
+            }
+            if (-not $copyOk) {
+                Post-Check $Sync $Server 'Databases' 'FAILED'
+                Fail $Sync $Server $phase 'Wait for copies to catch up' ('Copies did not become healthy: ' + $copyWhy)
+            }
+        }
+
+        if ($RestoreActiveDbs -and $activeDbs.Count -gt 0) {
+            Post-Check $Sync $Server 'DbMount' $(if ($Simulate) { 'SIMULATED' } else { 'MOVING BACK' })
+            foreach ($db in $activeDbs) {
+                Do-Step $Sync $Server $phase ('Move {0} back' -f $db) {
+                    Invoke-Ex -Session $session -ScriptBlock {
+                        param($d, $srv)
+                        Move-ActiveMailboxDatabase -Identity $d -ActivateOnServer $srv -MountDialOverride None `
+                            -SkipClientExperienceChecks -Confirm:$false -ErrorAction Stop | Out-Null
+                    } -ArgumentList @($db, $Server)
+                } $Simulate ('Returns the database to the server it was mounted on before the reboot.') $false | Out-Null
+            }
+        }
+        elseif ($activeDbs.Count -eq 0) {
+            Post-Step $Sync $Server $phase 'Move databases back' 'SKIPPED' 'Nothing was mounted on this server before the reboot.'
+        }
+        else {
+            Post-Step $Sync $Server $phase 'Move databases back' 'SKIPPED' '"Move databases back" is switched off.'
+        }
+
+        if ($RestorePam -and $wasPam) {
+            Do-Step $Sync $Server $phase 'Move the cluster core group back' {
+                $a = Get-RemoteArgs $Server $Credential
+                $a['ScriptBlock'] = {
+                    param($grp, $tgt)
+                    Import-Module FailoverClusters -ErrorAction Stop
+                    Move-ClusterGroup -Name $grp -Node $tgt -ErrorAction Stop | Out-Null
+                }
+                $a['ArgumentList'] = @($coreGroup, $Server)
+                Invoke-Command @a
+            } $Simulate ('This server held the PAM before the reboot; returning "{0}".' -f $coreGroup) $false | Out-Null
+        }
+        elseif ($wasPam) {
+            Post-Step $Sync $Server $phase 'Move the cluster core group back' 'SKIPPED' '"Move the cluster back" is switched off.'
+        }
+        else {
+            Post-Step $Sync $Server $phase 'Move the cluster core group back' 'SKIPPED' 'This server did not own the core group before the reboot.'
+        }
+    }
+
+    # ==========================================================================
+    #  7. FINAL VERIFICATION
+    # ==========================================================================
+    # These are the checks that turn the grid green and release the next server
+    # in the site. Anything short of green here holds the site.
+    $phase = 'Verify'
+    Post-Field $Sync $Server 'Phase' $phase
+    $verifyFailures = New-Object System.Collections.Generic.List[string]
+
+    # -- services
+    if ($Simulate) { Post-Check $Sync $Server 'Services' 'SIMULATED' }
+    else {
+        try {
+            $svc = Get-ExchangeServiceState -ComputerName $Server -Credential $Credential
+            if (@($svc.CoreStopped).Count -gt 0) {
+                Post-Check $Sync $Server 'Services' 'FAILED'
+                Post-Step  $Sync $Server $phase 'Services' 'FAILED' ('Core service(s) not running: {0}' -f (@($svc.CoreStopped) -join ', '))
+                $verifyFailures.Add('core services')
+            }
+            elseif (@($svc.OtherStopped).Count -gt 0) {
+                # Non-core does not hold the site: it was very likely stopped
+                # before the reboot too, and the pre-flight said so.
+                Post-Check $Sync $Server 'Services' 'WARN'
+                Post-Step  $Sync $Server $phase 'Services' 'WARN' `
+                    ('All {0} core service(s) running. Non-core stopped, often deliberate: {1}' -f $svc.CoreTotal, (@($svc.OtherStopped) -join ', '))
+            }
+            else {
+                Post-Check $Sync $Server 'Services' 'OK'
+                Post-Step  $Sync $Server $phase 'Services' 'OK' ('All {0} core and {1} automatic service(s) running.' -f $svc.CoreTotal, $svc.AutoTotal)
+            }
+        }
+        catch {
+            Post-Check $Sync $Server 'Services' 'FAILED'
+            Post-Step  $Sync $Server $phase 'Services' 'FAILED' $_.Exception.Message
+            $verifyFailures.Add('services')
+        }
+    }
+
+    # -- Test-ServiceHealth: the Exchange view of the same question, which knows
+    #    which services each installed role actually requires.
+    if (-not $Simulate -and $Role -ne 'Edge') {
+        try {
+            $health = Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Test-ServiceHealth -Server $srv -ErrorAction Stop | ForEach-Object {
+                    [pscustomobject]@{
+                        Role      = [string]$_.Role
+                        Required  = [bool]$_.RequiredServicesRunning
+                        NotRunning = @($_.ServicesNotRunning)
+                    }
+                }
+            } -ArgumentList @($Server)
+            $bad = @($health | Where-Object { -not $_.Required })
+            if ($bad.Count -eq 0) {
+                Post-Step $Sync $Server $phase 'Test-ServiceHealth' 'OK' (('All required services running for: ' + ((@($health) | ForEach-Object { $_.Role }) -join ', ')))
+            }
+            else {
+                Post-Step $Sync $Server $phase 'Test-ServiceHealth' 'FAILED' `
+                    (($bad | ForEach-Object { '{0}: {1}' -f $_.Role, ($_.NotRunning -join ', ') }) -join '; ')
+                Post-Check $Sync $Server 'Services' 'FAILED'
+                $verifyFailures.Add('Test-ServiceHealth')
+            }
+        }
+        catch { Post-Step $Sync $Server $phase 'Test-ServiceHealth' 'WARN' $_.Exception.Message }
+    }
+
+    # -- databases
+    if ($Role -eq 'Edge') { Post-Check $Sync $Server 'Databases' 'n/a' }
+    elseif ($Simulate)    { Post-Check $Sync $Server 'Databases' 'SIMULATED' }
+    else {
+        try {
+            $cs = @(Get-CopyStatusSnapshot -Session $session -ComputerName $Server)
+            $bad = @($cs | Where-Object {
+                        $_.Status -notin @('Healthy', 'Mounted') -or
+                        $_.CopyQueueLength -gt $CopyQueueThreshold -or
+                        $_.ReplayQueueLength -gt $ReplayQueueThreshold -or
+                        (Test-CopyIndexBad $_.ContentIndexState) })
+            $mounted = @($cs | Where-Object { $_.Status -eq 'Mounted' } | ForEach-Object { $_.DatabaseName })
+            if ($bad.Count -eq 0) {
+                Post-Check $Sync $Server 'Databases' 'OK'
+                Post-Step  $Sync $Server $phase 'Database copies' 'OK' `
+                    ('{0} copy(ies) healthy. Mounted here: {1}' -f $cs.Count, $(if ($mounted.Count) { $mounted -join ', ' } else { 'none' }))
+            }
+            else {
+                Post-Check $Sync $Server 'Databases' 'FAILED'
+                Post-Step  $Sync $Server $phase 'Database copies' 'FAILED' `
+                    (($bad | ForEach-Object { '{0}[{1}] CQ={2} RQ={3} CI={4}' -f $_.Name, $_.Status, $_.CopyQueueLength, $_.ReplayQueueLength, $_.ContentIndexState }) -join '; ')
+                $verifyFailures.Add('database copies')
+            }
+            if ($RestoreActiveDbs -and $activeDbs.Count -gt 0) {
+                $missing = @($activeDbs | Where-Object { $mounted -notcontains $_ })
+                if ($missing.Count -eq 0) {
+                    Post-Check $Sync $Server 'DbMount' ('MOUNTED: {0}' -f $mounted.Count)
+                    Post-Step  $Sync $Server $phase 'Databases returned and mounted' 'OK' `
+                        ('Mounted on this server again: {0}' -f ($activeDbs -join ', '))
+                }
+                else {
+                    Post-Check $Sync $Server 'DbMount' ('PARTIAL: {0}/{1}' -f ($activeDbs.Count - $missing.Count), $activeDbs.Count)
+                    Post-Step  $Sync $Server $phase 'Databases returned and mounted' 'WARN' `
+                        ('Not mounted here again: {0}. The copies are healthy, so this is a placement question rather than an outage.' -f ($missing -join ', '))
+                }
+            }
+            elseif ($mounted.Count -gt 0) {
+                Post-Check $Sync $Server 'DbMount' ('MOUNTED: {0}' -f $mounted.Count)
+            }
+            else {
+                Post-Check $Sync $Server 'DbMount' 'NONE MOUNTED'
+            }
+        }
+        catch {
+            Post-Check $Sync $Server 'Databases' 'FAILED'
+            Post-Step  $Sync $Server $phase 'Database copies' 'FAILED' $_.Exception.Message
+            $verifyFailures.Add('database copies')
+        }
+    }
+
+    # -- replication and MAPI
+    if (-not $Simulate -and $Role -ne 'Edge') {
+        try {
+            $rep = Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Test-ReplicationHealth -Identity $srv -ErrorAction Stop |
+                    Where-Object { [string]$_.Result -notin @('Passed', 'Succeeded') } |
+                    ForEach-Object { '{0}={1} ({2})' -f $_.Check, $_.Result, $_.Error }
+            } -ArgumentList @($Server)
+            if (@($rep).Count -eq 0) {
+                Post-Step $Sync $Server $phase 'Test-ReplicationHealth' 'OK' 'Every replication check passed.'
+            }
+            else {
+                Post-Step $Sync $Server $phase 'Test-ReplicationHealth' 'FAILED' ((@($rep)) -join '; ')
+                Post-Check $Sync $Server 'Databases' 'FAILED'
+                $verifyFailures.Add('Test-ReplicationHealth')
+            }
+        }
+        catch { Post-Step $Sync $Server $phase 'Test-ReplicationHealth' 'WARN' $_.Exception.Message }
+
+        try {
+            $mapi = Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Test-MapiConnectivity -Server $srv -ErrorAction Stop |
+                    Where-Object { [string]$_.Result -notin @('Success', 'Passed') } |
+                    ForEach-Object { '{0}={1} ({2})' -f $_.Database, $_.Result, $_.Error }
+            } -ArgumentList @($Server)
+            if (@($mapi).Count -eq 0) {
+                Post-Step $Sync $Server $phase 'Test-MapiConnectivity' 'OK' 'Every database answered a MAPI logon.'
+            }
+            else {
+                Post-Step $Sync $Server $phase 'Test-MapiConnectivity' 'FAILED' ((@($mapi)) -join '; ')
+                Post-Check $Sync $Server 'Databases' 'FAILED'
+                $verifyFailures.Add('Test-MapiConnectivity')
+            }
+        }
+        catch { Post-Step $Sync $Server $phase 'Test-MapiConnectivity' 'WARN' $_.Exception.Message }
+    }
+
+    # -- queues
+    if ($Simulate) { Post-Check $Sync $Server 'Queues' 'SIMULATED' }
+    else {
+        try {
+            $q = Get-QueueSnapshot -ComputerName $Server -Credential $Credential -Session $session -Role $Role
+            $total = [int]$q.Total
+            if ($total -le $QueueThreshold -and [int]$q.Retry -eq 0) {
+                Post-Check $Sync $Server 'Queues' 'OK'
+                Post-Step  $Sync $Server $phase 'Transport queues' 'OK' ('{0} message(s) queued, no queue in Retry.' -f $total)
+            }
+            elseif ($total -le $QueueThreshold) {
+                Post-Check $Sync $Server 'Queues' 'WARN'
+                Post-Step  $Sync $Server $phase 'Transport queues' 'WARN' ('{0} queue(s) in Retry: {1}' -f [int]$q.Retry, $q.Detail)
+                $verifyFailures.Add('transport queues in retry')
+            }
+            else {
+                Post-Check $Sync $Server 'Queues' 'FAILED'
+                Post-Step  $Sync $Server $phase 'Transport queues' 'FAILED' ('{0} message(s) queued (threshold {1}): {2}' -f $total, $QueueThreshold, $q.Detail)
+                $verifyFailures.Add('transport queues')
+            }
+            if ([int]$q.Poison -gt 0) {
+                Post-Step $Sync $Server $phase 'Poison queue' 'WARN' ('{0} message(s) in the poison queue - review them by hand.' -f [int]$q.Poison)
+            }
+        }
+        catch {
+            Post-Check $Sync $Server 'Queues' 'FAILED'
+            Post-Step  $Sync $Server $phase 'Transport queues' 'FAILED' $_.Exception.Message
+            $verifyFailures.Add('transport queues')
+        }
+    }
+
+    # -- cluster and component state
+    if ($Role -eq 'Edge') { Post-Check $Sync $Server 'Cluster' 'n/a' }
+    elseif ($Simulate)    { Post-Check $Sync $Server 'Cluster' 'SIMULATED' }
+    else {
+        try {
+            $cl = Get-ClusterSnapshot -QueryNode $peerNodes[0] -Credential $Credential -Target $Server
+            $inactive = Invoke-Ex -Session $session -ScriptBlock {
+                param($srv)
+                Get-InactiveComponents (Get-ServerComponentState -Identity $srv -ErrorAction Stop |
+                    Where-Object { [string]$_.State -ne 'Active' }) | ForEach-Object { '{0}={1}' -f $_.Component, $_.State }
+            } -ArgumentList @($Server)
+
+            $problems = @()
+            if ($cl.TargetState -ne 'Up')  { $problems += ('cluster node is {0}' -f $cl.TargetState) }
+            if (@($inactive).Count -gt 0) { $problems += ('components not Active: ' + ((@($inactive)) -join ', ')) }
+            if ($problems.Count -eq 0) {
+                Post-Check $Sync $Server 'Cluster' 'OK'
+                Post-Step  $Sync $Server $phase 'Cluster / component state' 'OK' `
+                    ('Node is Up, all components Active. Core group "{0}" owner: {1}.' -f $cl.CoreGroup, $cl.CoreOwner)
+            }
+            else {
+                Post-Check $Sync $Server 'Cluster' 'FAILED'
+                Post-Step  $Sync $Server $phase 'Cluster / component state' 'FAILED' ($problems -join '; ')
+                $verifyFailures.Add('cluster / component state')
+            }
+        }
+        catch {
+            Post-Check $Sync $Server 'Cluster' 'FAILED'
+            Post-Step  $Sync $Server $phase 'Cluster / component state' 'FAILED' $_.Exception.Message
+            $verifyFailures.Add('cluster / component state')
+        }
+    }
+
+    # -- pending reboot should be gone
+    if (-not $Simulate) {
+        try {
+            $after = Get-PendingRebootInfo -ComputerName $Server -Credential $Credential
+            if ($after.PendingReboot) {
+                Post-Check $Sync $Server 'PatchState' 'REBOOT REQUIRED'
+                Post-Step  $Sync $Server $phase 'Pending reboot' 'WARN' ('Still pending: {0}. Another patch pass may be needed.' -f $after.Reasons)
+            }
+            else {
+                Post-Check $Sync $Server 'PatchState' 'NO REBOOT PENDING'
+                Post-Step  $Sync $Server $phase 'Pending reboot' 'OK' 'Cleared by the reboot.'
+            }
+        }
+        catch { Post-Step $Sync $Server $phase 'Pending reboot' 'WARN' $_.Exception.Message }
+    }
+
+    if ($verifyFailures.Count -gt 0) {
+        $failed = $true
+        $failNote = 'Failed checks: ' + ($verifyFailures.ToArray() -join ', ')
+    }
+}
+catch {
+    $failed = $true
+    $failNote = $_.Exception.Message
+    Post-Step $Sync $Server $phase 'Run stopped' 'FAILED' $failNote
+}
+finally {
+    if ($session) { Remove-PSSession $session -ErrorAction SilentlyContinue }
+    $result = if ($Simulate -and -not $failed) { 'SIMULATED' } elseif ($failed) { 'FAILED' } else { 'COMPLETE' }
+    Post-Field $Sync $Server 'Finished' (Get-Date)
+    Post-Field $Sync $Server 'Phase' $(if ($failed) { 'Halted' } else { 'Done' })
+    Post-Field $Sync $Server 'Result' $result
+    Post $Sync @{ Kind = 'RebootDone'; Server = $Server; Site = $Site; Success = (-not $failed); Detail = $failNote }
+}
+'@
+
+# THERE IS NO LONGER A SITE HELPER IN THE WORKERS, and that is a fix rather
+# than a tidy-up. The original injected a function that read the site out of
+# the hostname with a regex matching one organisation's naming convention --
+# a tenant name inside a here-string, which ARCHITECTURE 61d forbids, and a
+# guess about the fact the whole site rule depends on. The site now comes from
+# Tenant.json and is PASSED to the worker as -Site and -SitePeers.
+
+function New-WorkerSource {
+    <#
+    .SYNOPSIS
+        Assemble a runnable worker script: param block, then the shared
+        helpers, then the worker body.
+    .DESCRIPTION
+        `param(...)` is only a parameter declaration when it is the FIRST
+        statement in the script. Concatenating the preamble in front of a body
+        that starts with `param(...)` demotes it to an ordinary command call, so
+        the script runs with nothing bound and dies with
+
+            The term 'param' is not recognized as the name of a cmdlet...
+            You cannot call a method on a null-valued expression
+
+        - the second error being every `$Sync.Events.Enqueue(...)` against a
+        $Sync that was never passed. Nothing catches this early: the text still
+        PARSES, because `param(...)` is a syntactically valid command call, so
+        a Parser::ParseInput check on the assembled source reports no errors and
+        the failure only appears at run time inside a runspace.
+
+        So the param block is lifted off the body with the AST and re-emitted
+        first. Using the AST rather than a regex means a multi-line, attributed,
+        default-valued param block is handled exactly as PowerShell sees it.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Body,
+        [Parameter(Mandatory)][string]$Preamble,
+        [string]$Helpers = ''
+    )
+
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Body, [ref]$null, [ref]$errors)
+    if ($errors -and $errors.Count -gt 0) {
+        throw ('The worker body does not parse: {0}' -f (($errors | ForEach-Object { $_.Message }) -join '; '))
+    }
+
+    $paramBlock = ''
+    $rest = $Body
+    if ($ast.ParamBlock) {
+        $paramBlock = $ast.ParamBlock.Extent.Text
+        $rest = $Body.Substring($ast.ParamBlock.Extent.EndOffset)
+    }
+    return ($paramBlock + "`n" + $Preamble + "`n" + $Helpers + "`n" + $rest)
+}
+
+$scanWorkerSource   = New-WorkerSource -Body $scanWorkerBody   -Preamble $workerPreamble
+$rebootWorkerSource = New-WorkerSource -Body $rebootWorkerBody -Preamble $workerPreamble
+
+# ==============================================================================
+#  FORM
+# ==============================================================================
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'Server Reboot - Exchange post-patch'
+$form.StartPosition = 'CenterScreen'
+$form.WindowState = 'Maximized'
+$form.MinimumSize = New-Object System.Drawing.Size(1360, 860)
+$form.BackColor = $clrForm
+$form.ForeColor = $clrText
+$form.Font = $fontUI
+
+# TWO OPT-OUTS FROM THE SHARED FORM FURNITURE, BOTH FOR A REASON.
+#
+# NoStatusBar  -- Add-ToolHelpButton docks a status strip on every tool that
+#                 does not say otherwise. This window already has one, and it
+#                 says considerably more: what is running, what is queued,
+#                 what is held, how many servers are up and how many mailbox
+#                 servers still have databases mounted. Two strips along the
+#                 bottom, one of them permanently reading "Working ...", is
+#                 worse than either.
+# NoAcceptButton -- the shared keyboard defaults make Enter press the form's
+#                 first button. On every other tool that is a read. Here the
+#                 first button is Scan, and a stray Enter anywhere on a screen
+#                 whose buttons restart mailbox servers is not a keystroke
+#                 worth saving. The confirmation dialog nulls its own
+#                 AcceptButton for the same reason.
+#
+# AutoScale is deliberately NOT opted out of: this form is laid out in
+# containers, so it scales properly, and the operators use the zoom.
+$form.Tag = 'NoStatusBar|NoAcceptButton'
+
+$root = New-Object System.Windows.Forms.TableLayoutPanel
+$root.Dock = 'Fill'
+$root.ColumnCount = 1
+$root.RowCount = 4
+$root.Padding = New-Object System.Windows.Forms.Padding(10)
+$root.BackColor = $clrForm
+[void]$root.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+[void]$root.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))    # header
+[void]$root.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))    # controls
+[void]$root.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100)))# results
+[void]$root.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))    # status
+$form.Controls.Add($root)
+
+# --- Header -------------------------------------------------------------------
+$header = New-Object System.Windows.Forms.TableLayoutPanel
+$header.Dock = 'Fill'
+$header.AutoSize = $true
+$header.AutoSizeMode = 'GrowAndShrink'
+$header.ColumnCount = 1
+$header.RowCount = 2
+$header.BackColor = $clrPanel
+$header.Padding = New-Object System.Windows.Forms.Padding(14, 10, 14, 12)
+[void]$header.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+[void]$header.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+[void]$header.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+
+$lblTitle = New-Object System.Windows.Forms.Label
+$lblTitle.Text = 'Server Reboot - Exchange post-patch'
+$lblTitle.Font = New-Object System.Drawing.Font($uiFace, 15, [System.Drawing.FontStyle]::Bold)
+$lblTitle.ForeColor = $clrText
+$lblTitle.AutoSize = $true
+# The '?' button is placed by Add-ToolHelpButton at the top right of the FORM,
+# over this row. Leaving the title's own right-hand end free keeps it clear of
+# the button without the placement walk having to widen the window.
+$lblTitle.Margin = New-Object System.Windows.Forms.Padding(0, 0, 48, 4)
+
+$lblSubtitle = New-Object System.Windows.Forms.Label
+$lblSubtitle.Text = 'Scan first: the Patch State and Ready columns show which servers are patched and safe to restart. Tick the ones you want - the scheduler runs at most one server per site, moves databases and the cluster off a mailbox server before it goes down, puts them back afterwards, and only releases the next server in a site once every check for the previous one is green.'
+$lblSubtitle.ForeColor = $clrMuted
+$lblSubtitle.AutoSize = $true
+$lblSubtitle.MaximumSize = New-Object System.Drawing.Size(1600, 0)
+
+$header.Controls.Add($lblTitle, 0, 0)
+$header.Controls.Add($lblSubtitle, 0, 1)
+$root.Controls.Add($header, 0, 0)
+
+# --- Control panel ------------------------------------------------------------
+$controlPanel = New-Object System.Windows.Forms.TableLayoutPanel
+$controlPanel.Dock = 'Fill'
+$controlPanel.AutoSize = $true
+$controlPanel.AutoSizeMode = 'GrowAndShrink'
+$controlPanel.ColumnCount = 4
+$controlPanel.RowCount = 5
+$controlPanel.BackColor = $clrPanel
+$controlPanel.Padding = New-Object System.Windows.Forms.Padding(14, 12, 14, 14)
+$controlPanel.Margin = New-Object System.Windows.Forms.Padding(0, 10, 0, 10)
+[void]$controlPanel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize)))
+[void]$controlPanel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 50)))
+[void]$controlPanel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize)))
+[void]$controlPanel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 50)))
+for ($i = 0; $i -lt 5; $i++) {
+    [void]$controlPanel.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+}
+
+function New-FieldLabel {
+    param([string]$Text)
+
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = $Text
+    $l.AutoSize = $true
+    $l.Anchor = 'Left'
+    $l.TextAlign = 'MiddleLeft'
+    $l.ForeColor = $clrText
+    $l.Margin = New-Object System.Windows.Forms.Padding(0, 8, 12, 8)
+    return $l
+}
+
+function New-OptionCheck {
+    param([string]$Text, [bool]$Checked, [string]$Tip)
+
+    $c = New-Object System.Windows.Forms.CheckBox
+    $c.Text = $Text
+    $c.AutoSize = $true
+    $c.Anchor = 'Left'
+    $c.Checked = $Checked
+    $c.ForeColor = $clrText
+    $c.Margin = New-Object System.Windows.Forms.Padding(0, 6, 24, 6)
+    if ($Tip) { $script:Tips.SetToolTip($c, $Tip) }
+    return $c
+}
+
+$script:Tips = New-Object System.Windows.Forms.ToolTip
+$script:Tips.AutoPopDelay = 20000
+$script:Tips.InitialDelay = 400
+$script:Tips.ReshowDelay = 200
+
+# Safety options, grouped so the two that change what the tool is allowed to do
+# are visibly separate from the two that only change how much it restores.
+$optGroup = New-Object System.Windows.Forms.GroupBox
+$optGroup.Text = 'Run options'
+$optGroup.AutoSize = $true
+$optGroup.AutoSizeMode = 'GrowAndShrink'
+$optGroup.Dock = 'Fill'
+$optGroup.ForeColor = $clrText
+$optGroup.Margin = New-Object System.Windows.Forms.Padding(0, 4, 0, 4)
+$optGroup.Padding = New-Object System.Windows.Forms.Padding(12, 6, 12, 10)
+
+$optPanel = New-Object System.Windows.Forms.TableLayoutPanel
+$optPanel.Dock = 'Fill'
+$optPanel.AutoSize = $true
+$optPanel.AutoSizeMode = 'GrowAndShrink'
+$optPanel.ColumnCount = 3
+$optPanel.RowCount = 3
+$optPanel.BackColor = $clrPanel
+for ($i = 0; $i -lt 3; $i++) {
+    [void]$optPanel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize)))
+    [void]$optPanel.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+}
+
+$chkSimulate = New-OptionCheck 'Simulate - walk every step, change nothing' $true `
+    'Runs the whole pipeline and writes the full step log, but every state changing call is skipped. Leave this on for the first run so you can read exactly what the tool would do.'
+$chkPause = New-OptionCheck 'Pause between servers in the same site' $true `
+    'After a server finishes green, the site waits for you to press Continue before the next queued server in that site starts.'
+$chkRoleRule = New-OptionCheck 'Allow one Mailbox + one Edge per site at once' $false `
+    'Relaxes the rule from one server per site to two, provided they are different roles. Never two Mailbox servers and never two Edge servers of the same site.'
+$chkRestoreDb = New-OptionCheck 'Move databases back afterwards' $true `
+    'Returns each database to the server it was mounted on before the reboot, once all copies are healthy again.'
+$chkRestorePam = New-OptionCheck 'Move the cluster core group (PAM) back' $true `
+    'If the server owned the cluster core group before the reboot, move it back afterwards.'
+$chkForce = New-OptionCheck 'Force - reboot even without a pending reboot' $false `
+    'Overrides the "is it actually patched" gate and the pre-flight health gate. It does NOT override the hard gate that refuses to reboot a server still hosting a mounted database or owning the cluster.'
+
+$optPanel.Controls.Add($chkSimulate,   0, 0)
+$optPanel.Controls.Add($chkPause,      1, 0)
+$optPanel.Controls.Add($chkRoleRule,   2, 0)
+$optPanel.Controls.Add($chkRestoreDb,  0, 1)
+$optPanel.Controls.Add($chkRestorePam, 1, 1)
+$optPanel.Controls.Add($chkForce,      2, 1)
+$optGroup.Controls.Add($optPanel)
+
+# Thresholds and timeouts.
+function New-NumBox {
+    param([int]$Value, [int]$Min, [int]$Max)
+
+    $n = New-Object System.Windows.Forms.NumericUpDown
+    $n.Minimum = $Min
+    $n.Maximum = $Max
+    $n.Value = [Math]::Min($Max, [Math]::Max($Min, $Value))
+    $n.Anchor = 'Left'
+    $n.TextAlign = 'Right'
+    $n.Width = 90
+    $n.Margin = New-Object System.Windows.Forms.Padding(0, 4, 20, 4)
+    return $n
+}
+
+$tuneGroup = New-Object System.Windows.Forms.GroupBox
+$tuneGroup.Text = 'Thresholds and timeouts'
+$tuneGroup.AutoSize = $true
+$tuneGroup.AutoSizeMode = 'GrowAndShrink'
+$tuneGroup.Dock = 'Fill'
+$tuneGroup.ForeColor = $clrText
+$tuneGroup.Margin = New-Object System.Windows.Forms.Padding(0, 4, 0, 4)
+$tuneGroup.Padding = New-Object System.Windows.Forms.Padding(12, 6, 12, 10)
+
+$tunePanel = New-Object System.Windows.Forms.TableLayoutPanel
+$tunePanel.Dock = 'Fill'
+$tunePanel.AutoSize = $true
+$tunePanel.AutoSizeMode = 'GrowAndShrink'
+$tunePanel.ColumnCount = 8
+$tunePanel.RowCount = 2
+$tunePanel.BackColor = $clrPanel
+for ($i = 0; $i -lt 8; $i++) {
+    [void]$tunePanel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize)))
+}
+[void]$tunePanel.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+[void]$tunePanel.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+
+$numQueue   = New-NumBox $QueueThreshold 0 100000
+$numCopyQ   = New-NumBox $CopyQueueThreshold 0 100000
+$numReplayQ = New-NumBox $ReplayQueueThreshold 0 100000
+$numReboot  = New-NumBox $RebootTimeoutMinutes 5 240
+$numSettle  = New-NumBox $SettleTimeoutMinutes 1 240
+$numDrain   = New-NumBox $DrainTimeoutMinutes 1 240
+$numHotfix  = New-NumBox $HotfixMaxAgeDays 1 365
+
+$tunePanel.Controls.Add((New-FieldLabel 'Queue threshold:'),   0, 0)
+$tunePanel.Controls.Add($numQueue,                             1, 0)
+$tunePanel.Controls.Add((New-FieldLabel 'Copy queue max:'),    2, 0)
+$tunePanel.Controls.Add($numCopyQ,                             3, 0)
+$tunePanel.Controls.Add((New-FieldLabel 'Replay queue max:'),  4, 0)
+$tunePanel.Controls.Add($numReplayQ,                           5, 0)
+$tunePanel.Controls.Add((New-FieldLabel 'Patch age (days):'),  6, 0)
+$tunePanel.Controls.Add($numHotfix,                            7, 0)
+$tunePanel.Controls.Add((New-FieldLabel 'Reboot wait (min):'), 0, 1)
+$tunePanel.Controls.Add($numReboot,                            1, 1)
+$tunePanel.Controls.Add((New-FieldLabel 'Settle wait (min):'), 2, 1)
+$tunePanel.Controls.Add($numSettle,                            3, 1)
+$tunePanel.Controls.Add((New-FieldLabel 'Drain wait (min):'),  4, 1)
+$tunePanel.Controls.Add($numDrain,                             5, 1)
+$tuneGroup.Controls.Add($tunePanel)
+
+# --- Buttons ------------------------------------------------------------------
+$buttonRow = New-Object System.Windows.Forms.FlowLayoutPanel
+$buttonRow.FlowDirection = 'LeftToRight'
+$buttonRow.AutoSize = $true
+$buttonRow.AutoSizeMode = 'GrowAndShrink'
+$buttonRow.WrapContents = $true
+$buttonRow.Dock = 'Fill'
+$buttonRow.Margin = New-Object System.Windows.Forms.Padding(0, 12, 0, 0)
+
+function New-ActionButton {
+    param([string]$Text, [System.Drawing.Color]$Back, [string]$Tip)
+
+    $b = New-Object System.Windows.Forms.Button
+    $b.Text = $Text
+    $b.AutoSize = $true
+    $b.AutoSizeMode = 'GrowAndShrink'
+    $b.MinimumSize = New-Object System.Drawing.Size(150, 34)
+    $b.Padding = New-Object System.Windows.Forms.Padding(12, 6, 12, 6)
+    $b.Margin = New-Object System.Windows.Forms.Padding(0, 0, 12, 0)
+    $b.BackColor = $Back
+    $b.ForeColor = $clrText
+    $b.FlatStyle = 'System'
+    $b.UseVisualStyleBackColor = $false
+    if ($Tip) { $script:Tips.SetToolTip($b, $Tip) }
+    return $b
+}
+
+$btnScan     = New-ActionButton 'Scan Servers'  $clrGood 'Read patch state, services, databases, queues and cluster state from all eight servers. Read-only.'
+$btnStart    = New-ActionButton 'Start Reboots' $clrWarn 'Queue the ticked servers. At most one runs per site.'
+$btnContinue = New-ActionButton 'Continue'      $clrGood 'Release the next queued server in a site that is waiting - either because Pause is on, or because a run failed and you have dealt with it.'
+$btnStop     = New-ActionButton 'Stop'          $clrBad  'Ask the running workers to stop at the next safe point. A server already restarting is left in maintenance mode on purpose.'
+$btnSelect   = New-ActionButton 'Select Ready'  $clrPanel 'Tick every server the scan marked READY.'
+$btnCreds    = New-ActionButton 'Credentials'   $clrPanel 'Use an alternate account for remoting and Exchange. Leave unset to use the signed-in account.'
+$btnExport   = New-ActionButton 'Export...'     $clrPanel 'Save the server grid and the full step log to CSV or a text report.'
+$btnExit     = New-ActionButton 'Exit'          $clrPanel ''
+$btnStart.Enabled = $false
+$btnContinue.Enabled = $false
+$btnStop.Enabled = $false
+
+$allButtons = @($btnScan, $btnStart, $btnContinue, $btnStop, $btnSelect, $btnCreds, $btnExport, $btnExit)
+foreach ($b in $allButtons) { [void]$buttonRow.Controls.Add($b) }
+
+function Set-UniformButtonSize {
+    <#
+        Give every button the size the longest caption needs. Called once the
+        form is shown, i.e. after display scaling has been applied to the fonts
+        - measuring earlier under-sizes them on a scaled display.
+    #>
+    $w = 150
+    $h = 34
+    foreach ($b in $allButtons) {
+        $b.AutoSize = $true
+        $pref = $b.GetPreferredSize([System.Drawing.Size]::Empty)
+        if ($pref.Width -gt $w) { $w = $pref.Width }
+        if ($pref.Height -gt $h) { $h = $pref.Height }
+    }
+    foreach ($b in $allButtons) {
+        $b.AutoSize = $false
+        $b.Size = New-Object System.Drawing.Size([int]$w, [int]$h)
+    }
+    $buttonRow.PerformLayout()
+}
+
+# --- Legend -------------------------------------------------------------------
+$legendRow = New-Object System.Windows.Forms.FlowLayoutPanel
+$legendRow.FlowDirection = 'LeftToRight'
+$legendRow.AutoSize = $true
+$legendRow.AutoSizeMode = 'GrowAndShrink'
+$legendRow.WrapContents = $false
+$legendRow.Dock = 'Fill'
+$legendRow.Margin = New-Object System.Windows.Forms.Padding(0, 12, 0, 0)
+
+function New-LegendItem {
+    param([string]$Text, [System.Drawing.Color]$Back)
+
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = $Text
+    $l.AutoSize = $true
+    $l.BackColor = $Back
+    $l.ForeColor = $clrText
+    $l.BorderStyle = 'FixedSingle'
+    $l.Padding = New-Object System.Windows.Forms.Padding(8, 5, 8, 5)
+    $l.Margin = New-Object System.Windows.Forms.Padding(0, 0, 12, 0)
+    return $l
+}
+
+$lblLegendCaption = New-Object System.Windows.Forms.Label
+$lblLegendCaption.Text = 'Cell colours:'
+$lblLegendCaption.AutoSize = $true
+$lblLegendCaption.ForeColor = $clrText
+$lblLegendCaption.Margin = New-Object System.Windows.Forms.Padding(0, 7, 12, 0)
+
+[void]$legendRow.Controls.Add($lblLegendCaption)
+[void]$legendRow.Controls.Add((New-LegendItem 'Passed / ready' $clrGood))
+[void]$legendRow.Controls.Add((New-LegendItem 'In progress / attention' $clrWarn))
+[void]$legendRow.Controls.Add((New-LegendItem 'Failed / blocked' $clrBad))
+[void]$legendRow.Controls.Add((New-LegendItem 'Not applicable' $clrIdle))
+
+$controlPanel.Controls.Add($optGroup, 0, 0)
+$controlPanel.SetColumnSpan($optGroup, 4)
+$controlPanel.Controls.Add($tuneGroup, 0, 1)
+$controlPanel.SetColumnSpan($tuneGroup, 4)
+$controlPanel.Controls.Add($buttonRow, 0, 2)
+$controlPanel.SetColumnSpan($buttonRow, 4)
+$controlPanel.Controls.Add($legendRow, 0, 3)
+$controlPanel.SetColumnSpan($legendRow, 4)
+$root.Controls.Add($controlPanel, 0, 1)
+
+# --- Results ------------------------------------------------------------------
+$split = New-Object System.Windows.Forms.SplitContainer
+$split.Dock = 'Fill'
+$split.Orientation = 'Horizontal'
+$split.BackColor = $clrForm
+$split.SplitterWidth = 8
+$split.Panel1MinSize = 200
+$split.Panel2MinSize = 140
+
+$gridServers = New-Object System.Windows.Forms.DataGridView
+$gridServers.Dock = 'Fill'
+$gridServers.BackgroundColor = $clrPanel
+$gridServers.ForeColor = $clrText
+$gridServers.Font = $fontUI
+$gridServers.AllowUserToAddRows = $false
+$gridServers.AllowUserToDeleteRows = $false
+$gridServers.AllowUserToResizeRows = $false
+$gridServers.RowHeadersVisible = $false
+$gridServers.SelectionMode = 'FullRowSelect'
+$gridServers.MultiSelect = $true
+$gridServers.AutoSizeColumnsMode = 'Fill'
+$gridServers.AutoSizeRowsMode = 'DisplayedCells'
+$gridServers.ColumnHeadersHeightSizeMode = 'AutoSize'
+$gridServers.EnableHeadersVisualStyles = $false
+$gridServers.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+$gridServers.ColumnHeadersDefaultCellStyle.ForeColor = $clrText
+$gridServers.ColumnHeadersDefaultCellStyle.Font = $fontUIBold
+$gridServers.ColumnHeadersDefaultCellStyle.WrapMode = 'True'
+$gridServers.ColumnHeadersDefaultCellStyle.Padding = New-Object System.Windows.Forms.Padding(4, 4, 4, 4)
+$gridServers.DefaultCellStyle.Padding = New-Object System.Windows.Forms.Padding(4, 2, 4, 2)
+$gridServers.DefaultCellStyle.SelectionForeColor = $clrText
+
+# Columns are built by hand rather than bound, because the first one is a real
+# check box the operator ticks and a bound DataTable column would fight with it.
+$colPick = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
+$colPick.Name = 'Pick'
+$colPick.HeaderText = ''
+$colPick.FillWeight = 22
+$gridServers.Columns.Add($colPick) | Out-Null
+
+$serverColumns = [ordered]@{
+    'Server'      = 72
+    'Site'        = 26
+    'Role'        = 42
+    'Uptime'      = 42
+    'Last Patch'  = 98
+    'Patch State' = 94
+    'Ready'       = 58
+    'Phase'       = 56
+    'Boot'        = 96
+    'Services'    = 52
+    'Databases'   = 54
+    'DB Mount'    = 86
+    'Queues'      = 48
+    'Cluster'     = 52
+    'Result'      = 58
+    'Notes'       = 120
+}
+# The columns whose values run long enough to clip wrap instead. Combined with
+# AutoSizeRowsMode = DisplayedCells the row simply grows, which is the only way
+# to guarantee a status is never half-read: "NO REBOOT PENDIN..." and
+# "NO REBOOT PENDING" look identical at a glance and mean opposite things.
+$wrapColumns = @('Last Patch', 'Patch State', 'Ready', 'Boot', 'DB Mount', 'Notes')
+foreach ($name in $serverColumns.Keys) {
+    $c = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+    $c.Name = $name
+    $c.HeaderText = $name
+    $c.ReadOnly = $true
+    $c.FillWeight = $serverColumns[$name]
+    if ($wrapColumns -contains $name) { $c.DefaultCellStyle.WrapMode = 'True' }
+    $gridServers.Columns.Add($c) | Out-Null
+}
+
+# Every status column is washed by its own value, so "all green for a server"
+# is something you can see at a glance across the row rather than having to
+# read a single summary cell and trust it.
+$washColumns = @('Patch State', 'Ready', 'Boot', 'Services', 'Databases', 'DB Mount', 'Queues', 'Cluster', 'Result')
+$gridServers.Add_CellFormatting({
+    param($sender, $e)
+
+    if ($e.RowIndex -lt 0 -or $e.ColumnIndex -lt 0) { return }
+    try {
+        $col = $sender.Columns[$e.ColumnIndex].Name
+        if ($col -eq 'Notes') {
+            $sender.Rows[$e.RowIndex].Cells[$e.ColumnIndex].ToolTipText = [string]$e.Value
+            return
+        }
+        if ($washColumns -notcontains $col) { return }
+        $wash = Get-SeverityColor (Get-Severity ([string]$e.Value))
+        $e.CellStyle.BackColor = $wash
+        # THE INK IS FORCED, NOT INHERITED. Set-ConsoleTheme puts the theme's
+        # InputText on DefaultCellStyle and dims it again for read-only
+        # columns -- which every status column here is. Under a dark theme
+        # that is near-white text on a pastel green cell: unreadable, and the
+        # cell whose whole job is to be read at a glance.
+        $e.CellStyle.ForeColor = $clrWashInk
+        # Selecting a row must not hide its colours. A per-cell
+        # SelectionBackColor beats the DefaultCellStyle one the theme sets, so
+        # the row the operator clicked in order to read keeps its verdict.
+        $e.CellStyle.SelectionBackColor = $wash
+        $e.CellStyle.SelectionForeColor = $clrWashInk
+    }
+    catch { }
+})
+
+# A check box cell does not push its new value into .Value until the cell loses
+# focus, so reading the ticks straight after a click returns the PREVIOUS state
+# - which on this screen means starting the wrong server. Committing on the
+# dirty-state event makes the tick take effect the moment it is clicked.
+$gridServers.Add_CurrentCellDirtyStateChanged({
+    if ($gridServers.IsCurrentCellDirty) {
+        $gridServers.CommitEdit([System.Windows.Forms.DataGridViewDataErrorContexts]::Commit)
+    }
+})
+
+$gridSteps = New-Object System.Windows.Forms.DataGridView
+$gridSteps.Dock = 'Fill'
+$gridSteps.BackgroundColor = $clrPanel
+$gridSteps.ForeColor = $clrText
+$gridSteps.Font = $fontUI
+$gridSteps.ReadOnly = $true
+$gridSteps.AllowUserToAddRows = $false
+$gridSteps.AllowUserToDeleteRows = $false
+$gridSteps.AllowUserToResizeRows = $false
+$gridSteps.RowHeadersVisible = $false
+$gridSteps.SelectionMode = 'FullRowSelect'
+$gridSteps.AutoSizeColumnsMode = 'Fill'
+$gridSteps.AutoSizeRowsMode = 'DisplayedCells'
+$gridSteps.ColumnHeadersHeightSizeMode = 'AutoSize'
+$gridSteps.EnableHeadersVisualStyles = $false
+$gridSteps.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+$gridSteps.ColumnHeadersDefaultCellStyle.ForeColor = $clrText
+$gridSteps.ColumnHeadersDefaultCellStyle.Font = $fontUIBold
+$gridSteps.ColumnHeadersDefaultCellStyle.WrapMode = 'True'
+$gridSteps.DefaultCellStyle.Padding = New-Object System.Windows.Forms.Padding(4, 2, 4, 2)
+$gridSteps.AlternatingRowsDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(248, 248, 248)
+$gridSteps.DefaultCellStyle.SelectionForeColor = $clrText
+$gridSteps.Tag = 'Status'
+$gridSteps.Add_CellFormatting({
+    param($sender, $e)
+
+    if ($e.RowIndex -lt 0 -or $e.ColumnIndex -lt 0) { return }
+    try {
+        if ($sender.Columns[$e.ColumnIndex].Name -eq 'Detail') {
+            $sender.Rows[$e.RowIndex].Cells[$e.ColumnIndex].ToolTipText = [string]$e.Value
+        }
+        $cell = $sender.Rows[$e.RowIndex].Cells['Status']
+        if ($null -eq $cell) { return }
+        $e.CellStyle.BackColor = Get-SeverityColor (Get-Severity ([string]$cell.Value))
+        $e.CellStyle.ForeColor = $clrWashInk
+        $e.CellStyle.SelectionBackColor = $e.CellStyle.BackColor
+        $e.CellStyle.SelectionForeColor = $clrWashInk
+    }
+    catch { }
+})
+
+$tabs = New-Object System.Windows.Forms.TabControl
+$tabs.Dock = 'Fill'
+
+$tabServers = New-Object System.Windows.Forms.TabPage
+$tabServers.Text = 'Servers'
+$tabServers.BackColor = $clrPanel
+$tabServers.Padding = New-Object System.Windows.Forms.Padding(6)
+$tabServers.Controls.Add($gridServers)
+
+$tabStepGrid = New-Object System.Windows.Forms.TabPage
+$tabStepGrid.Text = 'Step Log'
+$tabStepGrid.BackColor = $clrPanel
+$tabStepGrid.Padding = New-Object System.Windows.Forms.Padding(6)
+$tabStepGrid.Controls.Add($gridSteps)
+
+[void]$tabs.TabPages.Add($tabServers)
+[void]$tabs.TabPages.Add($tabStepGrid)
+$split.Panel1.Controls.Add($tabs)
+
+$txtLog = New-Object System.Windows.Forms.TextBox
+$txtLog.Multiline = $true
+$txtLog.ReadOnly = $true
+$txtLog.WordWrap = $true
+$txtLog.ScrollBars = 'Both'
+$txtLog.Dock = 'Fill'
+$txtLog.Font = $fontMono
+$txtLog.BackColor = $clrPanel
+$txtLog.ForeColor = $clrText
+
+$logHeader = New-Object System.Windows.Forms.Label
+$logHeader.Text = 'Activity log'
+$logHeader.Font = $fontUIBold
+$logHeader.ForeColor = $clrText
+$logHeader.AutoSize = $true
+$logHeader.Anchor = 'Left'
+$logHeader.Margin = New-Object System.Windows.Forms.Padding(2, 2, 0, 4)
+
+$logPanel = New-Object System.Windows.Forms.TableLayoutPanel
+$logPanel.Dock = 'Fill'
+$logPanel.ColumnCount = 1
+$logPanel.RowCount = 2
+$logPanel.BackColor = $clrForm
+[void]$logPanel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+[void]$logPanel.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+[void]$logPanel.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+$logPanel.Controls.Add($logHeader, 0, 0)
+$logPanel.Controls.Add($txtLog, 0, 1)
+$split.Panel2.Controls.Add($logPanel)
+$root.Controls.Add($split, 0, 2)
+
+# --- Status bar ---------------------------------------------------------------
+$statusPanel = New-Object System.Windows.Forms.TableLayoutPanel
+$statusPanel.Dock = 'Fill'
+$statusPanel.AutoSize = $true
+$statusPanel.ColumnCount = 3
+$statusPanel.RowCount = 1
+$statusPanel.BackColor = $clrPanel
+$statusPanel.Padding = New-Object System.Windows.Forms.Padding(14, 10, 14, 10)
+$statusPanel.Margin = New-Object System.Windows.Forms.Padding(0, 10, 0, 0)
+[void]$statusPanel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+[void]$statusPanel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize)))
+[void]$statusPanel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize)))
+[void]$statusPanel.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+
+$lblStatus = New-Object System.Windows.Forms.Label
+$lblStatus.Text = 'Ready. Press Scan Servers to find out which servers are patched and waiting for a reboot.'
+$lblStatus.AutoSize = $true
+$lblStatus.Anchor = 'Left'
+$lblStatus.TextAlign = 'MiddleLeft'
+$lblStatus.ForeColor = $clrText
+$lblStatus.Margin = New-Object System.Windows.Forms.Padding(0, 2, 12, 2)
+
+$lblTotals = New-Object System.Windows.Forms.Label
+$lblTotals.Text = 'Not scanned yet.'
+$lblTotals.AutoSize = $true
+$lblTotals.Anchor = 'Right'
+$lblTotals.TextAlign = 'MiddleRight'
+$lblTotals.ForeColor = $clrText
+$lblTotals.Margin = New-Object System.Windows.Forms.Padding(12, 2, 12, 2)
+
+$progress = New-Object System.Windows.Forms.ProgressBar
+$progress.Anchor = 'Right'
+$progress.Size = New-Object System.Drawing.Size(320, 22)
+$progress.Margin = New-Object System.Windows.Forms.Padding(12, 2, 0, 2)
+
+$statusPanel.Controls.Add($lblStatus, 0, 0)
+$statusPanel.Controls.Add($lblTotals, 1, 0)
+$statusPanel.Controls.Add($progress, 2, 0)
+$root.Controls.Add($statusPanel, 0, 3)
+
+# ==============================================================================
+#  UI HELPERS
+# ==============================================================================
+function Write-Activity {
+    param([string]$Message, [string]$Level = 'INFO')
+
+    $line = '[{0:HH:mm:ss}] [{1,-5}] {2}' -f (Get-Date), $Level, $Message
+    [void]$script:Activity.AppendLine($line)
+    $txtLog.Text = $script:Activity.ToString()
+    $txtLog.SelectionStart = $txtLog.TextLength
+    $txtLog.ScrollToCaret()
+    try { Add-Content -LiteralPath $script:LogFile -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue } catch { }
+}
+
+function Write-RebootAudit {
+    <#
+    .SYNOPSIS
+        One row in CompletedTasks.csv for one server's run.
+    .DESCRIPTION
+        Every tool that changes something records itself (ARCHITECTURE 6), and
+        restarting a production mailbox server is about as far from read-only
+        as this toolkit gets. Log Viewer and the Dashboard read this file, so
+        the row is what lets somebody answer "which servers were rebooted, by
+        whom, and did they all come back" without opening this tool at all.
+
+        A SIMULATED RUN IS LOGGED TOO, UNDER ITS OWN ACTION. Silence would be
+        wrong -- somebody did run the tool against production servers and read
+        their state -- but recording it as 'ServerReboot' would put a reboot
+        that never happened in the same column as ones that did. The Action
+        names them apart and the Detail says so as well.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Server,
+        [bool]$Success,
+        [string]$Detail = ''
+    )
+
+    $s = $script:State[$Server]
+    $simulated = ($s -and $s.Result -eq 'SIMULATED')
+    $action = $(if ($simulated) { 'ServerRebootSimulate' } else { 'ServerReboot' })
+
+    $parts = @()
+    if ($simulated) { $parts += 'SIMULATED - nothing was changed' }
+    if ($s) {
+        $parts += ('site {0}, role {1}' -f $s.Site, $s.Role)
+        if (@($s.ActiveDbs).Count -gt 0) { $parts += ('databases moved off and back: ' + (@($s.ActiveDbs) -join ', ')) }
+        if ($s.WasPam) { $parts += 'held the cluster core group' }
+        $parts += ('services {0}, databases {1}, queues {2}, cluster {3}' -f `
+                    $s.ChkServices, $s.ChkDatabases, $s.ChkQueues, $s.ChkCluster)
+    }
+    if ("$Detail".Trim()) { $parts += "$Detail".Trim() }
+
+    try {
+        if ($Success) {
+            Write-CompletedLog -Action $action -Target $Server -Result 'Success' `
+                -Detail ($parts -join '; ') -Environment $Environment -RunId $script:RunId
+        } else {
+            Write-FailedLog -Action $action -Target $Server `
+                -Detail ($parts -join '; ') -Environment $Environment -RunId $script:RunId
+        }
+    }
+    catch {
+        # The audit log failing must not stop a reboot run, but it must not be
+        # silent either: the activity pane and the transcript both get it.
+        Write-Activity ('Could not write the audit log row for {0}: {1}' -f $Server, $_.Exception.Message) 'WARN'
+    }
+}
+
+function Set-Status {
+    param([string]$Message, [System.Drawing.Color]$Color = $clrPanel)
+
+    $lblStatus.Text = $Message
+    $statusPanel.BackColor = $Color
+    $lblStatus.Refresh()
+}
+
+function Get-PickedServers {
+    $picked = @()
+    foreach ($row in $gridServers.Rows) {
+        if ([bool]$row.Cells['Pick'].Value) { $picked += [string]$row.Cells['Server'].Value }
+    }
+    return $picked
+}
+
+function Update-ServerGrid {
+    <#
+    .SYNOPSIS
+        Rebuild the server grid from $script:State, keeping the ticks.
+    .DESCRIPTION
+        Rebuilt rather than patched in place so the scan, a mid-run update and a
+        reset all take the same path. The Pick column is read back first because
+        it is operator input, not state - losing a tick mid-run would be a nasty
+        surprise on a screen whose whole job is to be predictable.
+    #>
+    $ticks = @{}
+    foreach ($row in $gridServers.Rows) {
+        $n = [string]$row.Cells['Server'].Value
+        if ($n) { $ticks[$n] = [bool]$row.Cells['Pick'].Value }
+    }
+    # The Boot cell now updates every ten seconds for the whole of a reboot, so
+    # this rebuild runs constantly rather than once a phase. Remember which row
+    # was selected: silently snapping the selection back to the top every ten
+    # seconds, while the operator is reading a row, is worse than the flicker.
+    $selected = $null
+    if ($gridServers.SelectedRows.Count -gt 0) {
+        $selected = [string]$gridServers.SelectedRows[0].Cells['Server'].Value
+    }
+
+    $gridServers.SuspendLayout()
+    $gridServers.Rows.Clear()
+    foreach ($s in $script:State.Values) {
+        $notes = @()
+        if ($s.BlockReason) { $notes += $s.BlockReason }
+        if ($s.Detail)      { $notes += $s.Detail }
+        if ($s.ActiveDbs -and @($s.ActiveDbs).Count -gt 0) { $notes += ('Active DB: ' + (@($s.ActiveDbs) -join ', ')) }
+        if ($s.WasPam)      { $notes += 'Holds the cluster core group (PAM)' }
+        if ($script:Queue[$s.Site] -and $script:Queue[$s.Site].Contains($s.Server)) { $notes += 'Queued behind another server in this site' }
+        # AN INFERRED SITE IS FLAGGED IN EVERY ROW THAT HAS ONE. The site rule
+        # is the safety property; a site nobody declared is one this tool
+        # worked out from the hostname, and the operator has to be able to see
+        # which of the two they are trusting before they tick a box.
+        if (-not (Test-ServerSiteDeclared $s.Server)) {
+            $notes += ('Site "{0}" was inferred from the name, not declared in Tenant.json' -f $s.Site)
+        }
+
+        $idx = $gridServers.Rows.Add()
+        $row = $gridServers.Rows[$idx]
+        $row.Cells['Pick'].Value        = $(if ($ticks.ContainsKey($s.Server)) { $ticks[$s.Server] } else { $false })
+        $row.Cells['Server'].Value      = $s.Server
+        $row.Cells['Site'].Value        = $s.Site
+        $row.Cells['Role'].Value        = $s.Role
+        $row.Cells['Uptime'].Value      = $s.Uptime
+        $row.Cells['Last Patch'].Value  = $s.LastPatch
+        $row.Cells['Patch State'].Value = $s.PatchState
+        $row.Cells['Ready'].Value       = $s.Ready
+        $row.Cells['Phase'].Value       = $s.Phase
+        $row.Cells['Boot'].Value        = $s.Boot
+        $row.Cells['Services'].Value    = $s.ChkServices
+        $row.Cells['Databases'].Value   = $s.ChkDatabases
+        $row.Cells['DB Mount'].Value    = $s.DbMount
+        $row.Cells['Queues'].Value      = $s.ChkQueues
+        $row.Cells['Cluster'].Value     = $s.ChkCluster
+        $row.Cells['Result'].Value      = $s.Result
+        $row.Cells['Notes'].Value       = ($notes -join ' | ')
+
+        # A server that is mid-run must not be untickable-but-changeable: the
+        # tick is what the scheduler already acted on, so it is frozen.
+        $row.Cells['Pick'].ReadOnly = ($script:Jobs.ContainsKey($s.Server))
+        if ($selected -and $s.Server -eq $selected) { $row.Selected = $true }
+    }
+    $gridServers.ResumeLayout()
+
+    $ready   = @($script:State.Values | Where-Object { $_.Ready -eq 'READY' }).Count
+    $blocked = @($script:State.Values | Where-Object { $_.Ready -eq 'BLOCKED' -or $_.Ready -eq 'UNREACHABLE' }).Count
+    $done    = @($script:State.Values | Where-Object { $_.Result -eq 'COMPLETE' }).Count
+    $failed  = @($script:State.Values | Where-Object { $_.Result -eq 'FAILED' }).Count
+    # "Are they all back up?" is the question at the end of a patch night, so it
+    # is answered in the status bar rather than by reading down the Boot column.
+    $up      = @($script:State.Values | Where-Object { $_.Reachable -eq 'YES' }).Count
+    $mounted = @($script:State.Values | Where-Object { $_.Role -eq 'Mailbox' -and $_.DbMount -like 'MOUNTED*' }).Count
+    $mbx     = @($script:State.Values | Where-Object { $_.Role -eq 'Mailbox' }).Count
+    $lblTotals.Text = 'Up {0}/{1} | DBs mounted on {2}/{3} mailbox | Ready {4} | Blocked {5} | Rebooted {6} | Failed {7} | Running {8}' -f `
+        $up, $script:State.Count, $mounted, $mbx, $ready, $blocked, $done, $failed, $script:Jobs.Count
+}
+
+function Add-StepRow {
+    param($Step)
+
+    $script:Steps.Add($Step)
+    $idx = $gridSteps.Rows.Add()
+    $r = $gridSteps.Rows[$idx]
+    $r.Cells['Time'].Value   = '{0:HH:mm:ss}' -f $Step.Time
+    $r.Cells['Server'].Value = $Step.Server
+    $r.Cells['Phase'].Value  = $Step.Phase
+    $r.Cells['Step'].Value   = $Step.Step
+    $r.Cells['Status'].Value = $Step.Status
+    $r.Cells['Detail'].Value = $Step.Detail
+    if ($gridSteps.Rows.Count -gt 0) {
+        $gridSteps.FirstDisplayedScrollingRowIndex = $gridSteps.Rows.Count - 1
+    }
+}
+
+foreach ($def in @(
+        @{ Name = 'Time';   Weight = 34 },
+        @{ Name = 'Server'; Weight = 60 },
+        @{ Name = 'Phase';  Weight = 66 },
+        @{ Name = 'Step';   Weight = 140 },
+        @{ Name = 'Status'; Weight = 56 },
+        @{ Name = 'Detail'; Weight = 320 })) {
+    $c = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+    $c.Name = $def.Name
+    $c.HeaderText = $def.Name
+    $c.FillWeight = $def.Weight
+    if ($def.Name -eq 'Detail') { $c.DefaultCellStyle.WrapMode = 'True' }
+    $gridSteps.Columns.Add($c) | Out-Null
+}
+
+# ==============================================================================
+#  SCHEDULER
+# ==============================================================================
+function Get-SiteRunning {
+    <#
+        Servers of one site that currently have a worker attached.
+    #>
+    param([string]$Site)
+
+    return @($script:Jobs.Keys | Where-Object { $script:State[$_].Site -eq $Site })
+}
+
+function Test-CanStartInSite {
+    <#
+    .SYNOPSIS
+        Is the site allowed to start one more server right now?
+    .DESCRIPTION
+        This is the rule the whole tool exists to enforce, so it is one function
+        with no shortcuts around it. Default: one server per site, full stop.
+        With the role option on: at most two, and never two of the same role -
+        so a Mailbox pair or an Edge pair of the same site can still never go
+        down together. A site that is on hold is never allowed to start.
+    #>
+    param([string]$Site, [string]$Role)
+
+    if ($script:Holds[$Site]) { return $false }
+    $running = Get-SiteRunning $Site
+    if ($running.Count -eq 0) { return $true }
+    if (-not $chkRoleRule.Checked) { return $false }
+    if ($running.Count -ge 2) { return $false }
+    foreach ($r in $running) {
+        if ($script:State[$r].Role -eq $Role) { return $false }
+    }
+    return $true
+}
+
+function Start-Worker {
+    <#
+        Attach a runspace to one server. The synchronized hashtable is the only
+        thing shared with it; results come back purely as queued events, which
+        is what keeps the UI thread the sole writer of $script:State.
+    #>
+    param([string]$Server, [string]$Source, [hashtable]$Arguments)
+
+    $ps = [powershell]::Create()
+    [void]$ps.AddScript($Source)
+    foreach ($k in $Arguments.Keys) { [void]$ps.AddParameter($k, $Arguments[$k]) }
+    $handle = $ps.BeginInvoke()
+    $script:Jobs[$Server] = [pscustomobject]@{ PowerShell = $ps; Handle = $handle; Started = Get-Date }
+}
+
+function Start-RebootFor {
+    param([string]$Server)
+
+    $s = $script:State[$Server]
+    $s.Result = 'RUNNING...'
+    $s.Phase  = 'Starting'
+    Write-Activity ('Starting the reboot pipeline for {0} ({1}, {2}).' -f $Server, $s.Site, $s.Role) 'RUN'
+
+    # The other servers Tenant.json puts in THIS server's site. The worker
+    # prefers one of them for the transport redirect, so queued messages do
+    # not cross a data centre; it used to work this out from the hostname.
+    $sitePeers = @($script:State.Values |
+                    Where-Object { $_.Site -eq $s.Site -and $_.Server -ne $Server } |
+                    ForEach-Object { $_.Server })
+
+    Start-Worker -Server $Server -Source $rebootWorkerSource -Arguments @{
+        Sync                 = $script:Sync
+        Server               = $Server
+        Site                 = $s.Site
+        Role                 = $s.Role
+        Credential           = $script:Credential
+        ExchangeCandidates   = $ExchangeConnectionServers
+        SitePeers            = $sitePeers
+        QueueThreshold       = [int]$numQueue.Value
+        CopyQueueThreshold   = [int]$numCopyQ.Value
+        ReplayQueueThreshold = [int]$numReplayQ.Value
+        RebootTimeoutMinutes = [int]$numReboot.Value
+        SettleTimeoutMinutes = [int]$numSettle.Value
+        DrainTimeoutMinutes  = [int]$numDrain.Value
+        Simulate             = [bool]$chkSimulate.Checked
+        Force                = [bool]$chkForce.Checked
+        RestoreActiveDbs     = [bool]$chkRestoreDb.Checked
+        RestorePam           = [bool]$chkRestorePam.Checked
+    }
+}
+
+function Invoke-Scheduler {
+    <#
+    .SYNOPSIS
+        Release the next queued server in each site, if the site allows it.
+    .DESCRIPTION
+        Called from the UI timer, so the rule is re-checked continuously rather
+        than only when a run finishes. Nothing here can start a server while its
+        site is held, which is how a failed run stops the rest of the site
+        without anybody having to notice in time.
+    #>
+    if ($script:Sync.Cancel) { return }
+
+    foreach ($site in @($script:Queue.Keys)) {
+        $queue = $script:Queue[$site]
+        while ($queue.Count -gt 0) {
+            $next = $queue[0]
+            $s = $script:State[$next]
+            if (-not (Test-CanStartInSite -Site $site -Role $s.Role)) { break }
+            $queue.RemoveAt(0)
+            Start-RebootFor $next
+        }
+    }
+    Update-ButtonState
+}
+
+function Set-SiteHold {
+    param([string]$Site, [string]$Reason)
+
+    $script:Holds[$Site] = $Reason
+    Write-Activity ('{0} is on hold: {1}' -f $Site, $Reason) 'WARN'
+}
+
+function Update-ButtonState {
+    $running = ($script:Jobs.Count -gt 0)
+    $queued  = @($script:Queue.Values | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum
+    $held    = @($script:Holds.Keys | Where-Object { $script:Holds[$_] })
+
+    $script:Busy = $running -or ($queued -gt 0)
+    $btnScan.Enabled     = -not $running
+    $btnStart.Enabled    = -not $script:Busy
+    $btnStop.Enabled     = $script:Busy
+    $btnSelect.Enabled   = -not $running
+    $btnCreds.Enabled    = -not $running
+    $btnContinue.Enabled = ($held.Count -gt 0) -or ($queued -gt 0 -and -not $running)
+    foreach ($c in @($optGroup, $tuneGroup)) { $c.Enabled = -not $running }
+    # Simulate must never be switchable mid-run: half a run simulated and half
+    # of it real is the one state this tool must not be able to reach.
+    $chkSimulate.Enabled = -not $script:Busy
+}
+
+# ==============================================================================
+#  EVENT PUMP
+# ==============================================================================
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 750
+
+$timer.Add_Tick({
+  # WRAPPED, AND THE WRAP MATTERS MORE HERE THAN ANYWHERE ELSE. An unhandled
+  # exception in a Tick handler is a modal dialog that reappears every 750ms
+  # over a screen that is mid-reboot, and the operator cannot get to the Stop
+  # button to do anything about it.
+  try {
+    $dirty = $false
+    # Not $event: that is an automatic variable, and reusing it as the out
+    # parameter of TryDequeue is asking for a very confusing bug the day this
+    # handler is ever attached with Register-ObjectEvent instead.
+    $evt = $null
+
+    # Drain what is there and no more: an unbounded loop over a queue that
+    # workers are still filling can starve the UI thread on a busy run.
+    $budget = 300
+    while ($budget-- -gt 0 -and $script:Sync.Events.TryDequeue([ref]$evt)) {
+        $dirty = $true
+        $name = [string]$evt.Server
+        if (-not $script:State.Contains($name)) { continue }
+        $s = $script:State[$name]
+
+        switch ($evt.Kind) {
+            'Step' {
+                Add-StepRow $evt
+                $lvl = switch (Get-Severity $evt.Status) { 'Ok' { 'OK' } 'Bad' { 'ERROR' } 'Idle' { 'INFO' } default { 'WARN' } }
+                if ($evt.Status -ne 'RUNNING...') {
+                    Write-Activity ('{0} [{1}] {2}: {3}{4}' -f $name, $evt.Phase, $evt.Step, $evt.Status,
+                        $(if ($evt.Detail) { ' - ' + $evt.Detail } else { '' })) $lvl
+                }
+                if ($evt.Status -eq 'RUNNING...' -and $evt.Detail) { $s.Detail = $evt.Detail }
+            }
+            'Check' {
+                switch ($evt.Check) {
+                    'Services'   { $s.ChkServices  = $evt.Value }
+                    'Databases'  { $s.ChkDatabases = $evt.Value }
+                    'DbMount'    { $s.DbMount      = $evt.Value }
+                    'Queues'     { $s.ChkQueues    = $evt.Value }
+                    'Cluster'    { $s.ChkCluster   = $evt.Value }
+                    'PatchState' { $s.PatchState   = $evt.Value }
+                    'Ready'      { $s.Ready        = $evt.Value }
+                }
+            }
+            'Field' {
+                switch ($evt.Name) {
+                    'Phase'       { $s.Phase = $evt.Value }
+                    'Boot'        { $s.Boot = $evt.Value }
+                    'Uptime'      { $s.Uptime = $evt.Value }
+                    'LastBoot'    { $s.LastBoot = $evt.Value }
+                    'LastPatch'   { $s.LastPatch = $evt.Value }
+                    'Reachable'   { $s.Reachable = $evt.Value }
+                    'BlockReason' { $s.BlockReason = $evt.Value }
+                    'ActiveDbs'   { $s.ActiveDbs = @($evt.Value) }
+                    'WasPam'      { $s.WasPam = [bool]$evt.Value }
+                    'Result'      { $s.Result = $evt.Value }
+                    'Started'     { $s.Started = $evt.Value }
+                    'Finished'    { $s.Finished = $evt.Value }
+                }
+            }
+            'ScanDone' {
+                if ($script:Jobs.ContainsKey($name)) { Complete-Job $name }
+            }
+            'RebootDone' {
+                if ($script:Jobs.ContainsKey($name)) { Complete-Job $name }
+                # THE AUDIT ROW GOES HERE, per server, as the worker reports.
+                # Not at the end of the run: a run that is stopped, or a
+                # console that is closed while three servers are still going,
+                # would otherwise leave no record of the two that DID restart
+                # -- and "which servers did we reboot on Tuesday" is the
+                # question this log exists to answer (ARCHITECTURE 6).
+                Write-RebootAudit -Server $name -Success ([bool]$evt.Success) -Detail "$($evt.Detail)"
+                if ($evt.Success) {
+                    Write-Activity ('{0} finished green.' -f $name) 'OK'
+                    if ($chkPause.Checked -and $script:Queue[$s.Site].Count -gt 0) {
+                        Set-SiteHold $s.Site ('{0} is green. Press Continue to release the next server in {1}.' -f $name, $s.Site)
+                    }
+                }
+                else {
+                    # A failed server holds its whole site. This is the rule
+                    # that makes the tool safe to leave running: the next
+                    # server in the site cannot start behind a broken one
+                    # without somebody reading what went wrong first.
+                    Set-SiteHold $s.Site ('{0} did not finish green - {1}' -f $name, $evt.Detail)
+                    Write-Activity ('{0} FAILED: {1}' -f $name, $evt.Detail) 'ERROR'
+                }
+            }
+        }
+    }
+
+    # Reap any runspace that ended without posting its Done event - a worker
+    # killed by an unhandled terminating error in its own preamble, say.
+    foreach ($srv in @($script:Jobs.Keys)) {
+        $job = $script:Jobs[$srv]
+        if ($null -ne $job -and $job.Handle.IsCompleted) {
+            Complete-Job $srv
+            $dirty = $true
+        }
+    }
+
+    if ($dirty) {
+        Invoke-Scheduler
+        Update-ServerGrid
+        Update-Status
+    }
+  }
+  catch {
+    # Stop the pump before saying anything, so the dialog cannot re-enter.
+    # The run itself is untouched -- the workers are in their own runspaces
+    # and carry on -- so this is recoverable: deal with the error, press
+    # Continue, and the pump restarts with the next queued event.
+    try { $timer.Stop() } catch { }
+    Show-HandlerError -ErrorRecord $_ -Context 'Update the reboot screen'
+    try { $timer.Start() } catch { }
+  }
+})
+
+function Complete-Job {
+    <#
+        Tear one worker down and surface whatever it wrote to its error stream.
+        A runspace that ends without posting a Done event would otherwise just
+        vanish, leaving a row stuck on "RUNNING..." forever.
+    #>
+    param([string]$Server)
+
+    $job = $script:Jobs[$Server]
+    if (-not $job) { return }
+    try {
+        if ($job.Handle.IsCompleted) { [void]$job.PowerShell.EndInvoke($job.Handle) }
+        else { $job.PowerShell.Stop() }
+    }
+    catch {
+        Write-Activity ('{0} worker ended with an error: {1}' -f $Server, $_.Exception.Message) 'ERROR'
+    }
+    $errors = @($job.PowerShell.Streams.Error | ForEach-Object { $_.Exception.Message })
+    if ($errors.Count -gt 0) {
+        Write-Activity ('{0} worker error stream: {1}' -f $Server, ($errors -join '; ')) 'ERROR'
+    }
+    try { $job.PowerShell.Dispose() } catch { }
+    $script:Jobs.Remove($Server)
+
+    $s = $script:State[$Server]
+    if ($s.Result -eq 'RUNNING...') {
+        $s.Result = 'FAILED'
+        $s.Phase = 'Halted'
+        Set-SiteHold $s.Site ('{0} stopped without reporting a result.' -f $Server)
+    }
+}
+
+function Update-Status {
+    $running = @($script:Jobs.Keys)
+    $queued  = @($script:Queue.Values | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum
+    $held    = @($script:Holds.Keys | Where-Object { $script:Holds[$_] })
+
+    if ($running.Count -gt 0) {
+        # While a server is restarting, its Boot state is the useful thing to
+        # say - "SRV01 (BOOTING 3:20)" answers the question the operator is
+        # actually asking, where "(Reboot)" does not.
+        $desc = @($running | ForEach-Object {
+            $st = $script:State[$_]
+            if ($st.Phase -eq 'Reboot' -and $st.Boot -notin @('-', '')) { '{0} ({1})' -f $_, $st.Boot }
+            else { '{0} ({1})' -f $_, $st.Phase }
+        }) -join ', '
+        Set-Status ('Running: {0}. {1} queued.' -f $desc, $queued) $clrWarn
+        $progress.Style = 'Marquee'
+    }
+    elseif ($held.Count -gt 0) {
+        Set-Status (@($held | ForEach-Object { $script:Holds[$_] }) -join '  //  ') $clrWarn
+        $progress.Style = 'Blocks'
+        $progress.Value = 0
+    }
+    elseif ($queued -gt 0) {
+        Set-Status ('{0} server(s) queued. Press Continue to release them.' -f $queued) $clrWarn
+        $progress.Style = 'Blocks'
+    }
+    else {
+        $failed = @($script:State.Values | Where-Object { $_.Result -eq 'FAILED' }).Count
+        $done   = @($script:State.Values | Where-Object { $_.Result -in @('COMPLETE', 'SIMULATED') }).Count
+        if ($failed -gt 0)   { Set-Status ('Idle. {0} server(s) finished, {1} failed - read the Step Log.' -f $done, $failed) $clrBad }
+        elseif ($done -gt 0) { Set-Status ('Idle. {0} server(s) finished green.' -f $done) $clrGood }
+        else                 { Set-Status 'Idle.' $clrPanel }
+        $progress.Style = 'Blocks'
+        $progress.Value = 0
+    }
+    Update-ButtonState
+}
+
+# ==============================================================================
+#  ACTIONS
+# ==============================================================================
+# EVERY HANDLER IS WRAPPED. An exception that escapes a WinForms Click is
+# caught by .NET, not by PowerShell, and the operator gets a CLR crash dialog
+# instead of a script and a line number -- on a screen that is in the middle of
+# restarting a mailbox server. Show-HandlerError puts the PowerShell view back
+# and writes a Failed row to the audit log, so an error somebody dismissed
+# still left a trace (ARCHITECTURE 10.4).
+function Invoke-ScanAll {
+    if ($script:Jobs.Count -gt 0) { return }
+    if ($script:State.Count -eq 0) {
+        Set-Status $script:ConfigNote $clrBad
+        return
+    }
+    foreach ($s in $script:State.Values) {
+        $s.Ready = 'SCANNING'
+        $s.PatchState = 'SCANNING'
+        $s.BlockReason = ''
+        $s.Phase = 'Scanning'
+        if ($s.Result -notin @('COMPLETE', 'FAILED', 'SIMULATED')) { $s.Result = '-' }
+        $s.Boot = '-'
+        foreach ($p in @('ChkServices', 'ChkDatabases', 'ChkQueues', 'ChkCluster', 'DbMount')) { $s.$p = '-' }
+    }
+    Update-ServerGrid
+    Write-Activity ('Scanning {0} server(s). Read-only.' -f $script:State.Count)
+    Set-Status 'Scanning...' $clrWarn
+    $progress.Style = 'Marquee'
+
+    foreach ($s in $script:State.Values) {
+        Start-Worker -Server $s.Server -Source $scanWorkerSource -Arguments @{
+            Sync                 = $script:Sync
+            Server               = $s.Server
+            Site                 = $s.Site
+            Role                 = $s.Role
+            Credential           = $script:Credential
+            ExchangeCandidates   = $ExchangeConnectionServers
+            QueueThreshold       = [int]$numQueue.Value
+            CopyQueueThreshold   = [int]$numCopyQ.Value
+            ReplayQueueThreshold = [int]$numReplayQ.Value
+            HotfixMaxAgeDays     = [int]$numHotfix.Value
+        }
+    }
+    Update-ButtonState
+}
+
+$btnScan.Add_Click({
+    try { Invoke-ScanAll }
+    catch { Show-HandlerError -ErrorRecord $_ -Context 'Scan the servers' }
+})
+
+$btnSelect.Add_Click({
+    try {
+        $n = 0
+        foreach ($row in $gridServers.Rows) {
+            $ready = [string]$row.Cells['Ready'].Value
+            $tick = ($ready -eq 'READY')
+            $row.Cells['Pick'].Value = $tick
+            if ($tick) { $n++ }
+        }
+        Write-Activity ('Ticked {0} server(s) the scan marked READY.' -f $n)
+    }
+    catch { Show-HandlerError -ErrorRecord $_ -Context 'Select the ready servers' }
+})
+
+function Show-ConfirmDialog {
+    <#
+    .SYNOPSIS
+        The typed confirmation. Returns $true only if the operator types REBOOT.
+    .DESCRIPTION
+        A Yes/No box is one stray Enter key away from rebooting a mailbox
+        server. Typing the word forces the operator to have read the list, and
+        the list itself spells out the order the sites will run in so there is
+        no surprise about what goes down when.
+    #>
+    param([string[]]$Plan, [bool]$Simulate)
+
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = $(if ($Simulate) { 'Confirm simulated run' } else { 'Confirm reboot' })
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.FormBorderStyle = 'Sizable'
+    $dlg.MinimumSize = New-Object System.Drawing.Size(660, 480)
+    $dlg.Size = New-Object System.Drawing.Size(760, 560)
+    $dlg.BackColor = $clrForm
+    $dlg.ForeColor = $clrText
+    $dlg.Font = $fontUI
+
+    $tl = New-Object System.Windows.Forms.TableLayoutPanel
+    $tl.Dock = 'Fill'
+    $tl.ColumnCount = 1
+    $tl.RowCount = 4
+    $tl.Padding = New-Object System.Windows.Forms.Padding(14)
+    $tl.BackColor = $clrForm
+    [void]$tl.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+    [void]$tl.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+    [void]$tl.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+    [void]$tl.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+    [void]$tl.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+    $dlg.Controls.Add($tl)
+
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.AutoSize = $true
+    $lbl.ForeColor = $clrText
+    $lbl.Font = $fontUIBold
+    $lbl.Text = $(if ($Simulate) {
+            'SIMULATE is on. Nothing will be changed - this is a dry run of the plan below.'
+        } else {
+            'This will REBOOT production Exchange servers. Read the plan, then type REBOOT to confirm.'
+        })
+    $lbl.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 8)
+    $tl.Controls.Add($lbl, 0, 0)
+
+    $box = New-Object System.Windows.Forms.TextBox
+    $box.Multiline = $true
+    $box.ReadOnly = $true
+    $box.ScrollBars = 'Both'
+    $box.WordWrap = $false
+    $box.Dock = 'Fill'
+    $box.Font = $fontMono
+    $box.BackColor = $clrPanel
+    $box.ForeColor = $clrText
+    $box.Text = ($Plan -join "`r`n")
+    $tl.Controls.Add($box, 0, 1)
+
+    $entryPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+    $entryPanel.AutoSize = $true
+    $entryPanel.WrapContents = $false
+    $entryPanel.Dock = 'Fill'
+    $entryPanel.Margin = New-Object System.Windows.Forms.Padding(0, 10, 0, 0)
+
+    $entryLabel = New-Object System.Windows.Forms.Label
+    $entryLabel.Text = 'Type REBOOT to confirm:'
+    $entryLabel.AutoSize = $true
+    $entryLabel.Margin = New-Object System.Windows.Forms.Padding(0, 7, 10, 0)
+    $entryBox = New-Object System.Windows.Forms.TextBox
+    $entryBox.Width = 200
+    $entryBox.CharacterCasing = 'Upper'
+    [void]$entryPanel.Controls.Add($entryLabel)
+    [void]$entryPanel.Controls.Add($entryBox)
+    if ($Simulate) { $entryPanel.Visible = $false }
+    $tl.Controls.Add($entryPanel, 0, 2)
+
+    $btnPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+    $btnPanel.AutoSize = $true
+    $btnPanel.FlowDirection = 'RightToLeft'
+    $btnPanel.Dock = 'Fill'
+    $btnPanel.Margin = New-Object System.Windows.Forms.Padding(0, 12, 0, 0)
+
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = $(if ($Simulate) { 'Run simulation' } else { 'Reboot' })
+    $ok.Size = New-Object System.Drawing.Size(150, 34)
+    $ok.BackColor = $(if ($Simulate) { $clrGood } else { $clrBad })
+    $ok.ForeColor = $clrText
+    $ok.FlatStyle = 'System'
+    $ok.UseVisualStyleBackColor = $false
+    $ok.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $ok.Enabled = $Simulate
+    $ok.Margin = New-Object System.Windows.Forms.Padding(10, 0, 0, 0)
+
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = 'Cancel'
+    $cancel.Size = New-Object System.Drawing.Size(150, 34)
+    $cancel.BackColor = $clrPanel
+    $cancel.ForeColor = $clrText
+    $cancel.FlatStyle = 'System'
+    $cancel.UseVisualStyleBackColor = $false
+    $cancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+
+    [void]$btnPanel.Controls.Add($ok)
+    [void]$btnPanel.Controls.Add($cancel)
+    $tl.Controls.Add($btnPanel, 0, 3)
+
+    $entryBox.Add_TextChanged({ $ok.Enabled = ($entryBox.Text.Trim() -eq 'REBOOT') }.GetNewClosure())
+    $dlg.AcceptButton = $null
+    $dlg.CancelButton = $cancel
+
+    # The shared theme, so the confirmation matches the window behind it.
+    # No help button on a modal confirmation: the '?' opens another window,
+    # and a second window over a typed confirmation is how somebody loses
+    # track of which one they answered.
+    Set-ConsoleTheme -Form $dlg
+    # AFTER the theme, because the theme walks the control tree and re-faces
+    # every button it finds -- including this one, which must stay disabled
+    # until the word is typed, and which must not become the accept button.
+    $ok.Enabled = $Simulate
+    $dlg.AcceptButton = $null
+    $answer = $dlg.ShowDialog($form)
+    $dlg.Dispose()
+    return ($answer -eq [System.Windows.Forms.DialogResult]::OK)
+}
+
+function Start-RebootRun {
+    if ($script:Busy) { return }
+
+    $picked = @(Get-PickedServers)
+    if ($picked.Count -eq 0) {
+        $null = Show-ToolDialog('Tick at least one server.', 'Nothing selected',
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+        return
+    }
+
+    # Never reboot the server the Exchange session would run through. With two
+    # mailbox servers per site this only fires when the whole DAG has been
+    # ticked -- or when Tenant.json lists only one Mailbox-role server, which
+    # is worth finding out here rather than in the middle of a maintenance
+    # window.
+    $usable = @($ExchangeConnectionServers | Where-Object { $picked -notcontains $_ })
+    if ($usable.Count -eq 0) {
+        $null = Show-ToolDialog(
+            "Every Exchange connection server is in the selection, so there would be nowhere left to run Exchange cmdlets from.`n`nUntick at least one mailbox server, or declare another Mailbox-role server in Tenant Manager.",
+            'No Exchange session available', [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning)
+        return
+    }
+
+    # Anything the scan did not clear is refused here, unless Force is on. The
+    # scan is what makes the word "ready" mean something, so starting a server
+    # that was never scanned is treated exactly like a blocked one.
+    $notReady = @($picked | Where-Object { $script:State[$_].Ready -ne 'READY' })
+    if ($notReady.Count -gt 0 -and -not $chkForce.Checked) {
+        $detail = ($notReady | ForEach-Object { '  {0} - {1}{2}' -f $_, $script:State[$_].Ready,
+                    $(if ($script:State[$_].BlockReason) { ': ' + $script:State[$_].BlockReason } else { '' }) }) -join "`n"
+        $null = Show-ToolDialog(
+            "These servers are not marked READY by the scan:`n`n$detail`n`nScan again, untick them, or tick Force.",
+            'Not ready', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        return
+    }
+
+    # Build the plan the confirmation shows: exactly the order the scheduler
+    # will use, so what is agreed to and what happens are the same thing.
+    $plan = New-Object System.Collections.Generic.List[string]
+    $plan.Add('PLAN')
+    $plan.Add('====')
+    $plan.Add('')
+    $plan.Add(('Mode              : {0}' -f $(if ($chkSimulate.Checked) { 'SIMULATE - nothing is changed' } else { 'LIVE - servers will be restarted' })))
+    $plan.Add(('Concurrency rule  : {0}' -f $(if ($chkRoleRule.Checked) { 'one Mailbox + one Edge per site' } else { 'one server per site' })))
+    $plan.Add(('Pause between     : {0}' -f $(if ($chkPause.Checked) { 'yes - Continue is needed between servers in a site' } else { 'no - the site runs straight through' })))
+    $plan.Add(('Move databases back: {0}' -f $(if ($chkRestoreDb.Checked) { 'yes' } else { 'no' })))
+    $plan.Add(('Move cluster back  : {0}' -f $(if ($chkRestorePam.Checked) { 'yes' } else { 'no' })))
+    $plan.Add(('Force              : {0}' -f $(if ($chkForce.Checked) { 'YES - pre-flight gates are overridden' } else { 'no' })))
+    $plan.Add(('Exchange session   : via {0}' -f ($usable -join ', ')))
+    $plan.Add('')
+
+    foreach ($site in @($script:State.Values | ForEach-Object { $_.Site } | Select-Object -Unique)) {
+        $inSite = @($picked | Where-Object { $script:State[$_].Site -eq $site })
+        if ($inSite.Count -eq 0) { continue }
+        $plan.Add(('SITE {0} - {1} server(s), run {2}' -f $site, $inSite.Count,
+            $(if ($chkRoleRule.Checked) { 'at most one Mailbox and one Edge at a time' } else { 'strictly one at a time' })))
+        $order = 0
+        foreach ($srv in $inSite) {
+            $order++
+            $st = $script:State[$srv]
+            $plan.Add(('  {0}. {1}  [{2}]  {3}' -f $order, $srv, $st.Role, $st.PatchState))
+            if ($st.Role -eq 'Mailbox') {
+                $dbs = @($st.ActiveDbs)
+                $plan.Add(('       databases to move off and back : {0}' -f $(if ($dbs.Count) { $dbs -join ', ' } else { 'none mounted' })))
+                $plan.Add(('       holds the cluster core group   : {0}' -f $(if ($st.WasPam) { 'YES - it will be moved and moved back' } else { 'no' })))
+            }
+        }
+        $plan.Add('')
+    }
+
+    $plan.Add('FOR EACH MAILBOX SERVER')
+    $plan.Add('  drain transport -> redirect messages -> move PAM off -> block activation ->')
+    $plan.Add('  move active databases off -> suspend cluster node -> VERIFY nothing is mounted')
+    $plan.Add('  and the cluster has moved -> ServerWideOffline -> REBOOT -> wait for a new boot')
+    $plan.Add('  time -> wait for every Exchange service -> exit maintenance in reverse -> wait')
+    $plan.Add('  for copies to catch up -> move the databases and the cluster back -> verify')
+    $plan.Add('  services, copies, replication, MAPI, queues and component state.')
+    $plan.Add('')
+    $plan.Add('FOR EACH EDGE SERVER')
+    $plan.Add('  drain transport -> wait for the queues -> REBOOT -> wait for a new boot time ->')
+    $plan.Add('  wait for every Exchange service -> transport back to Active -> verify services')
+    $plan.Add('  and queues.')
+    $plan.Add('')
+    $plan.Add('The next server in a site is only released once the previous one is green on')
+    $plan.Add('every check. A failure holds the whole site until you press Continue.')
+
+    if (-not (Show-ConfirmDialog -Plan $plan.ToArray() -Simulate ([bool]$chkSimulate.Checked))) {
+        Write-Activity 'Cancelled at the confirmation dialog.' 'WARN'
+        return
+    }
+
+    $script:Sync.Cancel = $false
+    $script:RunStarted = Get-Date
+    foreach ($site in @($script:Queue.Keys)) {
+        $script:Queue[$site].Clear()
+        $script:Holds[$site] = $null
+    }
+    foreach ($srv in $picked) {
+        $st = $script:State[$srv]
+        $st.Result = 'QUEUED'
+        $st.Phase = 'Queued'
+        $st.Detail = ''
+        $script:Queue[$st.Site].Add($srv)
+    }
+    Write-Activity ('Queued {0} server(s): {1}' -f $picked.Count, ($picked -join ', ')) 'RUN'
+    # THE RUN ITSELF IS LOGGED BEFORE ANYTHING STARTS, so the audit trail
+    # records the decision and its shape even if the console dies in the
+    # middle. Each server then gets its own row as it finishes.
+    try {
+        Write-CompletedLog -Action $(if ($chkSimulate.Checked) { 'ServerRebootSimulateStart' } else { 'ServerRebootStart' }) `
+            -Target (($picked | Sort-Object) -join ', ') -Result 'Success' `
+            -Detail ('{0} run queued for {1} server(s). Rule: {2}. Force: {3}. Move databases back: {4}. Move cluster back: {5}. Exchange session via {6}.' -f `
+                        $(if ($chkSimulate.Checked) { 'SIMULATED' } else { 'LIVE' }), $picked.Count,
+                        $(if ($chkRoleRule.Checked) { 'one Mailbox + one Edge per site' } else { 'one server per site' }),
+                        $(if ($chkForce.Checked) { 'YES' } else { 'no' }),
+                        $(if ($chkRestoreDb.Checked) { 'yes' } else { 'no' }),
+                        $(if ($chkRestorePam.Checked) { 'yes' } else { 'no' }),
+                        ($usable -join ', ')) `
+            -Environment $Environment -RunId $script:RunId
+    }
+    catch { Write-Activity ('Could not write the audit log row for the run: {0}' -f $_.Exception.Message) 'WARN' }
+    Invoke-Scheduler
+    Update-ServerGrid
+    Update-Status
+}
+
+$btnStart.Add_Click({
+    try { Start-RebootRun }
+    catch { Show-HandlerError -ErrorRecord $_ -Context 'Start the reboot run' }
+})
+
+$btnContinue.Add_Click({
+    try {
+        $held = @($script:Holds.Keys | Where-Object { $script:Holds[$_] })
+        if ($held.Count -eq 0) {
+            Invoke-Scheduler
+            Update-ServerGrid
+            Update-Status
+            return
+        }
+
+        $lines = @($held | ForEach-Object { '  {0}: {1}' -f $_, $script:Holds[$_] }) -join "`n"
+        $answer = Show-ToolDialog(
+            "Release the next server in these sites?`n`n$lines`n`nOnly do this once you have read the Step Log and are satisfied the site is healthy.",
+            'Continue', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+        foreach ($site in $held) {
+            $script:Holds[$site] = $null
+            Write-Activity ('{0} released by the operator.' -f $site) 'RUN'
+        }
+        Invoke-Scheduler
+        Update-ServerGrid
+        Update-Status
+    }
+    catch { Show-HandlerError -ErrorRecord $_ -Context 'Release the next server in a site' }
+})
+
+$btnStop.Add_Click({
+    try {
+        $answer = Show-ToolDialog(
+            "Stop the run?`n`nQueued servers are dropped and the running workers stop at their next check.`n`nA server that is already restarting is deliberately LEFT IN MAINTENANCE MODE - finish it by hand, or run the tool again for that server once it is back.",
+            'Stop', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+        $script:Sync.Cancel = $true
+        foreach ($site in @($script:Queue.Keys)) {
+            foreach ($srv in @($script:Queue[$site])) {
+                $script:State[$srv].Result = 'CANCELLED'
+                $script:State[$srv].Phase = 'Idle'
+            }
+            $script:Queue[$site].Clear()
+        }
+        Write-Activity 'Stop requested. Queued servers dropped; running workers will stop at their next check.' 'WARN'
+        # A STOP IS A DECISION AND IT IS LOGGED AS ONE. A server left mid-reboot
+        # is left in maintenance mode on purpose, and the row is what tells the
+        # next person that is why they found it that way.
+        try {
+            Write-CompletedLog -Action 'ServerRebootStop' -Target ((@($script:Jobs.Keys) | Sort-Object) -join ', ') `
+                -Result 'Partial' -Detail 'Operator stopped the run. Queued servers dropped; any server mid-reboot is left in maintenance mode.' `
+                -Environment $Environment -RunId $script:RunId
+        }
+        catch { }
+        Update-ServerGrid
+        Update-Status
+    }
+    catch { Show-HandlerError -ErrorRecord $_ -Context 'Stop the reboot run' }
+})
+
+$btnCreds.Add_Click({
+    try {
+        $c = Get-Credential -Message 'Account for WinRM and the Exchange session. Cancel to go back to the signed-in account.'
+        if ($c) {
+            $script:Credential = $c
+            Write-Activity ('Using alternate credentials: {0}' -f $c.UserName)
+            Set-Status ('Alternate credentials set: {0}' -f $c.UserName) $clrGood
+        }
+        else {
+            $script:Credential = $null
+            Write-Activity 'Cleared the alternate credentials - using the signed-in account.'
+        }
+    }
+    catch { Show-HandlerError -ErrorRecord $_ -Context 'Set alternate credentials' }
+})
+
+# --- Export -------------------------------------------------------------------
+function Get-ServerRows {
+    <#
+        The grid as objects, for export. Rebuilt from state rather than scraped
+        from the grid so the CSV carries the fields the grid has no room for.
+    #>
+    $script:State.Values | ForEach-Object {
+        [pscustomobject][ordered]@{
+            Server       = $_.Server
+            Site         = $_.Site
+            Role         = $_.Role
+            Reachable    = $_.Reachable
+            BootState    = $_.Boot
+            Uptime       = $_.Uptime
+            LastBoot     = $(if ($_.LastBoot) { '{0:yyyy-MM-dd HH:mm:ss}' -f $_.LastBoot } else { '' })
+            LastPatch    = $_.LastPatch
+            PatchState   = $_.PatchState
+            Ready        = $_.Ready
+            BlockReason  = $_.BlockReason
+            Phase        = $_.Phase
+            Services     = $_.ChkServices
+            Databases    = $_.ChkDatabases
+            DbMount      = $_.DbMount
+            Queues       = $_.ChkQueues
+            Cluster      = $_.ChkCluster
+            Result       = $_.Result
+            ActiveDbs    = (@($_.ActiveDbs) -join '; ')
+            HeldClusterGroup = $_.WasPam
+            Started      = $(if ($_.Started) { '{0:yyyy-MM-dd HH:mm:ss}' -f $_.Started } else { '' })
+            Finished     = $(if ($_.Finished) { '{0:yyyy-MM-dd HH:mm:ss}' -f $_.Finished } else { '' })
+        }
+    }
+}
+
+function Get-StepRows {
+    $script:Steps | ForEach-Object {
+        [pscustomobject][ordered]@{
+            Time     = '{0:yyyy-MM-dd HH:mm:ss}' -f $_.Time
+            Server   = $_.Server
+            Phase    = $_.Phase
+            Step     = $_.Step
+            Status   = $_.Status
+            Severity = Get-Severity $_.Status
+            Detail   = $_.Detail
+        }
+    }
+}
+
+function Get-ReportText {
+    # WHICH TENANT AND WHICH DIRECTORY, on the report as well as in the audit
+    # log. A reboot report that reaches a ticket has to say which estate it
+    # describes, and with two tenants in one folder the file name will not.
+    $tenant = ''
+    try { $tenant = "$(Get-ActiveTenantLabel)".Trim() } catch { }
+    if (-not $tenant) { try { $tenant = "$((Get-TenantConfig).TenantName)".Trim() } catch { } }
+
+    $lines = @(
+        'EXCHANGE POST-PATCH REBOOT REPORT'
+        '================================='
+        ''
+        ('Generated : {0:yyyy-MM-dd HH:mm:ss}' -f (Get-Date))
+        ('Run start : {0}' -f $(if ($script:RunStarted) { '{0:yyyy-MM-dd HH:mm:ss}' -f $script:RunStarted } else { 'n/a' }))
+        ('Operator  : {0}\{1}' -f $env:USERDOMAIN, $env:USERNAME)
+        ('Console   : {0}' -f [Environment]::MachineName)
+        ('Tenant    : {0}' -f $(if ($tenant) { $tenant } else { 'not recorded' }))
+        ('Directory : {0}' -f $(if ($Environment) { $Environment } else { 'not recorded' }))
+        ('Mode      : {0}' -f $(if ($chkSimulate.Checked) { 'SIMULATE' } else { 'LIVE' }))
+        ('Rule      : {0}' -f $(if ($chkRoleRule.Checked) { 'one Mailbox + one Edge per site' } else { 'one server per site' }))
+        ('Run id    : {0}' -f $(if ($script:RunId) { $script:RunId } else { 'n/a' }))
+        ''
+        'SERVERS'
+        '-------'
+    )
+    $lines += ((Get-ServerRows |
+        Select-Object Server, Site, Role, PatchState, Ready, BootState, Services, Databases, DbMount, Queues, Cluster, Result |
+        Format-Table -AutoSize | Out-String -Width 4096).TrimEnd())
+    $lines += ''
+    $lines += 'DETAIL PER SERVER'
+    $lines += '-----------------'
+    foreach ($s in $script:State.Values) {
+        $lines += ('{0} [{1} / {2}]' -f $s.Server, $s.Site, $s.Role)
+        $lines += ('    uptime {0}, last patch {1}, {2}' -f $s.Uptime, $s.LastPatch, $s.PatchState)
+        if ($s.BlockReason) { $lines += ('    blocked: {0}' -f $s.BlockReason) }
+        if (@($s.ActiveDbs).Count -gt 0) { $lines += ('    databases active before the reboot: {0}' -f (@($s.ActiveDbs) -join ', ')) }
+        if ($s.WasPam) { $lines += '    held the cluster core group (PAM)' }
+        $lines += ('    result: {0}' -f $s.Result)
+        $lines += ''
+    }
+    $lines += 'STEP LOG'
+    $lines += '--------'
+    $lines += ((Get-StepRows | Format-Table -AutoSize -Wrap | Out-String -Width 4096).TrimEnd())
+    return $lines
+}
+
+function Export-RebootRun {
+    if ($script:Steps.Count -eq 0 -and @($script:State.Values | Where-Object { $_.Ready -ne 'UNKNOWN' }).Count -eq 0) {
+        $null = Show-ToolDialog('Nothing to export yet. Scan the servers first.', 'Export',
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+        return
+    }
+
+    $dialog = New-Object System.Windows.Forms.SaveFileDialog
+    $dialog.Title = 'Export the reboot run'
+    $dialog.Filter = 'CSV file (*.csv)|*.csv|Text report (*.txt)|*.txt|HTML report (*.html)|*.html'
+    $dialog.FilterIndex = 1
+    $dialog.AddExtension = $true
+    $dialog.FileName = 'ServerReboot-{0:yyyyMMdd-HHmmss}' -f (Get-Date)
+    # THE TOOLKIT'S REPORTS FOLDER, where Report Browser will find it
+    # (ARCHITECTURE 61e). The dialog stays rather than writing silently: a
+    # patch-night run often has to be saved straight into a ticket or a share.
+    try { $dialog.InitialDirectory = Get-ReportPath }
+    catch { if ($env:USERPROFILE) { $dialog.InitialDirectory = Join-Path $env:USERPROFILE 'Desktop' } }
+    if ($dialog.ShowDialog($form) -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+    try {
+        $file = $dialog.FileName
+        $ext = [System.IO.Path]::GetExtension($file).ToLower()
+        switch ($ext) {
+            '.txt' {
+                Get-ReportText | Set-Content -LiteralPath $file -Encoding UTF8
+            }
+            '.html' {
+                $style = '<style>body{font-family:Segoe UI,sans-serif;color:#323232;background:#fff}' +
+                         'h1,h2{color:#323232}table{border-collapse:collapse;margin-bottom:24px}' +
+                         'th{background:#e6e6e6;text-align:left}th,td{border:1px solid #ccc;padding:4px 8px;font-size:12px}' +
+                         '</style>'
+                $html = (Get-ServerRows | ConvertTo-Html -Fragment -PreContent '<h2>Servers</h2>') +
+                        (Get-StepRows   | ConvertTo-Html -Fragment -PreContent '<h2>Step log</h2>')
+                ConvertTo-Html -Head $style -Title 'Exchange post-patch reboot' `
+                    -PreContent ('<h1>Exchange post-patch reboot</h1><p>{0:yyyy-MM-dd HH:mm:ss} by {1}\{2}</p>' -f (Get-Date), $env:USERDOMAIN, $env:USERNAME) `
+                    -Body ($html -join "`n") | Set-Content -LiteralPath $file -Encoding UTF8
+            }
+            default {
+                # Two files for CSV: one grid row per server and one row per
+                # step. Jamming both into one sheet loses the columns that make
+                # either of them readable.
+                $stepFile = [System.IO.Path]::ChangeExtension($file, $null) + '-steps.csv'
+                Get-ServerRows | Export-Csv -LiteralPath $file -NoTypeInformation -Encoding UTF8
+                Get-StepRows   | Export-Csv -LiteralPath $stepFile -NoTypeInformation -Encoding UTF8
+                $file = "$file`r`n$stepFile"
+            }
+        }
+        Write-Activity ('Exported to {0}' -f ($file -replace "`r`n", ' and '))
+        Set-Status ('Exported to {0}' -f ($file -replace "`r`n", ' and ')) $clrGood
+        # A report is a thing this tool produced, so it is logged like one.
+        Write-CompletedLog -Action 'Report' -Target ($file -replace "`r`n", '; ') -Result 'Success' `
+            -Detail ('Server Reboot export: {0} server(s), {1} step(s).' -f $script:State.Count, $script:Steps.Count) `
+            -Environment $Environment -RunId $script:RunId
+        $null = Show-ToolDialog("Saved to:`n`n$file", 'Export complete',
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+    }
+    catch {
+        Write-Activity ('Export failed - {0}' -f $_.Exception.Message) 'ERROR'
+        Write-FailedLog -Action 'Report' -Target $dialog.FileName -ErrorRecord $_ `
+            -Detail 'Server Reboot export' -Environment $Environment -RunId $script:RunId
+        $null = Show-ToolDialog("Export failed:`n`n$($_.Exception.Message)", 'Export failed',
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+    }
+}
+
+$btnExport.Add_Click({
+    try { Export-RebootRun }
+    catch { Show-HandlerError -ErrorRecord $_ -Context 'Export the reboot run' }
+})
+
+$btnExit.Add_Click({
+    try { $form.Close() }
+    catch { Show-HandlerError -ErrorRecord $_ -Context 'Close the window' }
+})
+
+# Clicking a row shows just that server's steps at the bottom, which is the
+# question being asked when a run is halfway through: what is THIS box doing?
+$gridServers.Add_SelectionChanged({
+    try {
+        if ($gridServers.SelectedRows.Count -eq 0) { return }
+        $name = [string]$gridServers.SelectedRows[0].Cells['Server'].Value
+        if (-not $name) { return }
+        $s = $script:State[$name]
+        if (-not $s) { return }
+        $script:Tips.SetToolTip($gridServers, ('{0}: {1}' -f $name, $s.BlockReason))
+    }
+    catch { }
+})
+
+$form.Add_FormClosing({
+  try {
+    if ($script:Busy) {
+        $answer = Show-ToolDialog(
+            "A reboot run is still in progress.`n`nClosing now leaves any server that is mid-reboot IN MAINTENANCE MODE, and nothing will move its databases back.`n`nClose anyway?",
+            'Run in progress', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) {
+            $_.Cancel = $true
+            return
+        }
+    }
+    $script:Sync.Cancel = $true
+    $timer.Stop()
+    # A run that was still going when the window closed is recorded, because
+    # that is the case where a server is left in maintenance mode and the
+    # audit log is the only thing that will still say so tomorrow.
+    if ($script:Busy) {
+        try {
+            Write-CompletedLog -Action 'ServerRebootAbandoned' `
+                -Target ((@($script:Jobs.Keys) | Sort-Object) -join ', ') -Result 'Partial' `
+                -Detail 'The window was closed while a run was in progress. Any server mid-reboot is left in maintenance mode and its databases were not moved back.' `
+                -Environment $Environment -RunId $script:RunId
+        }
+        catch { }
+    }
+    foreach ($srv in @($script:Jobs.Keys)) {
+        try { $script:Jobs[$srv].PowerShell.Stop(); $script:Jobs[$srv].PowerShell.Dispose() } catch { }
+    }
+  }
+  catch { Show-HandlerError -ErrorRecord $_ -Context 'Close the Server Reboot window' }
+})
+
+function Set-ScaledMinimumSize {
+    <#
+        MinimumSize is in physical pixels, so on a 200% display a literal 1360
+        lets the window shrink to 680 layout pixels - half what this form needs
+        - and the grid columns start clipping. Multiplying by the real DPI keeps
+        the floor at the width the layout was designed for.
+
+        AND THEN CLAMPED TO THE SCREEN, which the original did not do. On a
+        1920-wide display at 150 % the multiplied floor is 2040px: the window
+        becomes wider than the monitor with no way to shrink it, and the Stop
+        button goes off the right-hand edge. That is the same class of fault
+        as ARCHITECTURE 57 -- a literal designed at 96 dpi applied to a
+        scaled display -- and Limit-FormToScreen cannot help, because a
+        MinimumSize larger than the working area overrules it.
+
+        Measured INSIDE the process (CreateGraphics on a form with a handle),
+        because a DPI-unaware caller is told 96 whatever the display is doing.
+    #>
+    $graphics = $form.CreateGraphics()
+    try { $scale = $graphics.DpiX / 96.0 } finally { $graphics.Dispose() }
+    if ($scale -le 0) { return }
+
+    $w = [int](1360 * $scale)
+    $h = [int](860 * $scale)
+    try {
+        $wa = [System.Windows.Forms.Screen]::FromControl($form).WorkingArea
+        if ($wa.Width  -gt 0) { $w = [Math]::Min($w, $wa.Width) }
+        if ($wa.Height -gt 0) { $h = [Math]::Min($h, $wa.Height) }
+    }
+    catch { }
+    $form.MinimumSize = New-Object System.Drawing.Size($w, $h)
+}
+
+$form.Add_Shown({
+    try {
+        Set-ScaledMinimumSize
+        Set-UniformButtonSize
+        $split.SplitterDistance = [int]($split.Height * 0.68)
+        Update-ServerGrid
+        Update-ButtonState
+
+        if ($script:State.Count -eq 0) {
+            # NOTHING CONFIGURED IS REPORTED, NOT TREATED AS NOTHING TO DO.
+            # Get-TenantExchangeServerList returning an empty list means the
+            # tenant file has no servers and no on-premises session to ask --
+            # so the window says where to set them and does not scan.
+            #
+            # The fallback sentence is not decoration: an empty status bar on
+            # an empty grid reads as "still loading", which is the one thing
+            # this state is not.
+            $why = $script:ConfigNote
+            if (-not $why) { $why = 'No servers to manage. Set OnPremExchange.Servers in Tenant Manager, as NAME:Site:Role.' }
+            Set-Status $why $clrBad
+            Write-Activity $why 'ERROR'
+            return
+        }
+
+        Write-Activity ('Managing {0} server(s) from Tenant.json: {1}' -f $script:State.Count, (@($script:State.Keys) -join ', '))
+        Write-Activity ('Sites: {0}. At most one server per site runs at a time.' -f ((@($script:State.Values | ForEach-Object { $_.Site } | Select-Object -Unique)) -join ', '))
+        Write-Activity ('Exchange session candidates: {0}' -f (@($ExchangeConnectionServers) -join ', '))
+        Write-Activity ('Activity transcript: {0}' -f $script:LogFile)
+        if ($script:ConfigNote) { Write-Activity $script:ConfigNote 'WARN' }
+        if (@($script:UndeclaredSites).Count -gt 0) {
+            Write-Activity ('Site inferred from the name, not declared in Tenant.json, for: {0}. Declare them as NAME:Site:Role in Tenant Manager - the one-per-site rule is only as good as this.' -f (@($script:UndeclaredSites) -join ', ')) 'WARN'
+        }
+        Write-Activity 'Simulate is ON. Turn it off only when you have read a simulated run and agree with the plan.' 'WARN'
+        $timer.Start()
+        # Scan on load, so the first thing on screen answers "what needs rebooting".
+        $btnScan.PerformClick()
+    }
+    catch { Show-HandlerError -ErrorRecord $_ -Context 'Open the Server Reboot window' }
+})
+
+# THE SHARED THEME, LAST, once every control exists: Set-ConsoleTheme walks the
+# control tree and applies the operator's palette, the typeface, DPI scaling,
+# button roles, the raised chrome, the grid styling and the tenant band. It is
+# the one call that makes this window look like the rest of the console, and it
+# replaces the private theme library the original carried.
+#
+# The severity washes survive it: this tool's CellFormatting handlers set
+# BackColor, ForeColor and SelectionBackColor PER CELL, and a per-cell style
+# beats the DefaultCellStyle the theme sets.
+Set-ConsoleTheme -Form $form
+
+# The '?', the keyboard defaults and the zoom-on-resize, in the same place as
+# every other tool. Must be the LAST layout call -- see its own docstring.
+Add-ToolHelpButton -Form $form -ScriptPath $PSCommandPath -Title 'Server Reboot' | Out-Null
+
+[void]$form.ShowDialog()
+$form.Dispose()
+
+
+

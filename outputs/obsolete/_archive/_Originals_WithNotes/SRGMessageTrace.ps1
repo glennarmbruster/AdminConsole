@@ -1,0 +1,600 @@
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+    SRG (cloud-only, srgpros.com) Message Trace / Quarantine Release tool.
+.DESCRIPTION
+    REVISED 2026-07-22, part 2 -- no longer tied to a specific mailbox. Same
+    change as the original suite's MessageTrace.ps1 (see that script's header
+    for the full rationale): a trace is often about a sender, a recipient,
+    both, or neither, not necessarily "everything touching one particular
+    mailbox". So:
+      - This script no longer calls Resolve-ToolTarget at all. It opens
+        straight to the Message Trace window every time, standalone or from
+        SRGAdminConsole, with no prompt and no gate.
+      - The old "Direction" radio group (Sent from / Received to THIS
+        mailbox) plus its single "narrow" textbox are replaced by two fully
+        independent, optional fields: From (sender) and To (recipient). Fill
+        in either, both, or neither.
+      - -SmtpAddress is now purely an OPTIONAL convenience prefill (into the
+        From field), not a requirement.
+
+    Fully functional on its own:
+        .\SRGMessageTrace.ps1
+    opens directly to the Message Trace window, no prompt.
+
+    Fully functional from SRGAdminConsole.ps1 too:
+        .\SRGMessageTrace.ps1 -SmtpAddress user@srgpros.com
+    opens the same window with the From field pre-filled from -SmtpAddress,
+    if provided.
+
+    Ported from the original suite's MessageTrace.ps1 -- every function is
+    unchanged (Get-MessageTraceV2 / Get-MessageTraceDetailV2 /
+    Get-QuarantineMessage / Release-QuarantineMessage are all
+    "available only in the cloud-based service" per Microsoft Learn, so
+    there was never any on-prem dependency here to remove). Edits vs. the
+    original are the same mechanical ones every SRG tool script needs:
+      - Dot-sources SRGCommon.ps1, not Common.ps1.
+      - No -Environment / -DomainController parameters. Show-MessageTraceForm
+        no longer takes -Environment either -- the one place that used it
+        (the Write-CompletedLog line in the quarantine-release handler) now
+        just omits the environment label entirely, since there's only one
+        environment in this suite to log against.
+
+    ADDED 2026-07-22 -- results search/filter box: a new "Filter loaded
+    results" textbox + Search/Clear Filter buttons sit just above the grid.
+    This does NOT re-query Exchange Online -- it's a client-side filter over
+    whatever $script:CurrentTraceResults the last Trace run already pulled
+    back, matching the typed text (case-insensitive substring, via -like
+    "*text*") against SenderAddress, RecipientAddress, Subject, and Status.
+    A new $script:CurrentTraceDisplayResults holds the currently-filtered
+    (or unfiltered) subset that the grid actually renders; Update-
+    TraceGridDisplay was changed to read from that variable instead of
+    $script:CurrentTraceResults directly. Export to CSV was changed to
+    export $script:CurrentTraceDisplayResults too, so exporting after a
+    filter is applied exports what's on screen, not the full unfiltered
+    result set -- this is a judgment call and can be reverted if that's not
+    the desired behavior. Filter box is cleared automatically on every new
+    Trace run.
+.NOTES
+    Author  : Glenn Armbruster
+    Created : 2026-07-21 (ported from MessageTrace.ps1)
+    Revised : 2026-07-22 -- added results search/filter box (client-side,
+              no new query), ported from MessageTrace.ps1. See ADDED note
+              above.
+    Revised : 2026-07-22, later -- no longer tied to a specific mailbox;
+              removed the Resolve-ToolTarget gate and replaced the
+              Sent/Received direction radio with independent optional
+              From/To fields. See REVISED note above.
+#>
+param(
+    [string]$SmtpAddress
+)
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+. (Join-Path $PSScriptRoot 'SRGCommon.ps1')
+
+# No Resolve-ToolTarget call -- this tool is no longer tied to a specific
+# mailbox. See header REVISED note (2026-07-22, later).
+
+#region Actions - message trace (ported unchanged from MessageTrace.ps1 -- EXO only)
+function Invoke-MessageTrace {
+    param(
+        [string]$SenderAddress,
+        [string]$RecipientAddress,
+        [Parameter(Mandatory)][datetime]$StartDate,
+        [Parameter(Mandatory)][datetime]$EndDate,
+        [string]$Subject,
+        [string]$Status
+    )
+    $params = @{
+        StartDate   = $StartDate
+        EndDate     = $EndDate
+        ResultSize  = 5000
+        ErrorAction = 'Stop'
+    }
+    if ($SenderAddress)    { $params.SenderAddress    = $SenderAddress }
+    if ($RecipientAddress) { $params.RecipientAddress = $RecipientAddress }
+    if ($Subject) {
+        $params.Subject           = $Subject
+        $params.SubjectFilterType = 'Contains'
+    }
+    if ($Status) { $params.Status = $Status }
+    Invoke-EXOCommand -Name 'Get-MessageTraceV2' -Parameters $params
+}
+function Invoke-MessageTraceDetail {
+    param(
+        [Parameter(Mandatory)][guid]$MessageTraceId,
+        [Parameter(Mandatory)][string]$RecipientAddress,
+        [Parameter(Mandatory)][datetime]$StartDate,
+        [Parameter(Mandatory)][datetime]$EndDate
+    )
+    Invoke-EXOCommand -Name 'Get-MessageTraceDetailV2' -Parameters @{
+        MessageTraceId   = $MessageTraceId
+        RecipientAddress = $RecipientAddress
+        StartDate        = $StartDate
+        EndDate           = $EndDate
+        ErrorAction       = 'Stop'
+    }
+}
+function Find-QuarantineMatch {
+    param(
+        [string]$MessageId,
+        [string]$RecipientAddress,
+        [datetime]$StartReceivedDate,
+        [datetime]$EndReceivedDate
+    )
+    if (-not $MessageId) {
+        throw "This trace result has no Message-ID value to match against quarantine -- cannot look this message up automatically."
+    }
+    @(Invoke-EXOCommand -Name 'Get-QuarantineMessage' -Parameters @{
+        MessageId         = $MessageId
+        RecipientAddress  = $RecipientAddress
+        StartReceivedDate = $StartReceivedDate
+        EndReceivedDate   = $EndReceivedDate
+        ErrorAction       = 'Stop'
+    })
+}
+function Invoke-QuarantineRelease {
+    param([Parameter(Mandatory)]$QuarantineIdentity)
+    Invoke-EXOCommand -Name 'Release-QuarantineMessage' -Parameters @{
+        Identity     = $QuarantineIdentity
+        ReleaseToAll = $true
+        Confirm      = $false
+        ErrorAction  = 'Stop'
+    } | Out-Null
+}
+$script:TraceTimeZoneIds = [ordered]@{
+    'Eastern'  = 'Eastern Standard Time'
+    'Central'  = 'Central Standard Time'
+    'Mountain' = 'Mountain Standard Time'
+    'Pacific'  = 'Pacific Standard Time'
+    'UTC'      = 'UTC'
+}
+function Get-SelectedTraceTimeZone {
+    param([string]$Label)
+    $id = $script:TraceTimeZoneIds[$Label]
+    if (-not $id) { $id = 'UTC' }
+    try {
+        return [System.TimeZoneInfo]::FindSystemTimeZoneById($id)
+    } catch {
+        return [System.TimeZoneInfo]::Utc
+    }
+}
+function ConvertTo-TraceDisplayTime {
+    param($UtcValue, [System.TimeZoneInfo]$TimeZone)
+    if (-not $UtcValue) { return $UtcValue }
+    try {
+        $forced = [DateTime]::SpecifyKind([DateTime]$UtcValue, [DateTimeKind]::Utc)
+        return [System.TimeZoneInfo]::ConvertTimeFromUtc($forced, $TimeZone)
+    } catch {
+        return $UtcValue
+    }
+}
+function Format-TraceDetail {
+    param($Details, [System.TimeZoneInfo]$TimeZone)
+    $sb = New-Object System.Text.StringBuilder
+    $rows = @($Details)
+    if ($rows.Count -eq 0) {
+        [void]$sb.AppendLine("(no detail records returned)")
+        return $sb.ToString()
+    }
+    foreach ($d in $rows) {
+        $displayDate = if ($TimeZone) { ConvertTo-TraceDisplayTime -UtcValue $d.Date -TimeZone $TimeZone } else { $d.Date }
+        [void]$sb.AppendLine("$displayDate  [$($d.Event)]  $($d.Action)")
+        if ($d.Detail) { [void]$sb.AppendLine("    $($d.Detail)") }
+    }
+    return $sb.ToString()
+}
+function Show-MessageTraceForm {
+    param([string]$SmtpAddress)
+    $traceForm = New-Object System.Windows.Forms.Form
+    $traceForm.Text = if ($SmtpAddress) { "SRG Message Trace (from: $SmtpAddress)" } else { "SRG Message Trace" }
+    $traceForm.Size = New-Object System.Drawing.Size(1014, 754)
+    $traceForm.StartPosition = "CenterScreen"
+    $traceForm.Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 9)
+    $lblFrom = New-Object System.Windows.Forms.Label
+    $lblFrom.Text = "From:"
+    $lblFrom.Location = New-Object System.Drawing.Point(12, 16)
+    $lblFrom.AutoSize = $true
+    $traceForm.Controls.Add($lblFrom)
+    $txtFrom = New-Object System.Windows.Forms.TextBox
+    $txtFrom.Location = New-Object System.Drawing.Point(55, 13)
+    $txtFrom.Size = New-Object System.Drawing.Size(190, 20)
+    $txtFrom.Font = New-Object System.Drawing.Font("Consolas", 9)
+    if ($SmtpAddress) { $txtFrom.Text = $SmtpAddress }
+    $traceForm.Controls.Add($txtFrom)
+    $lblTo = New-Object System.Windows.Forms.Label
+    $lblTo.Text = "To:"
+    $lblTo.Location = New-Object System.Drawing.Point(12, 40)
+    $lblTo.AutoSize = $true
+    $traceForm.Controls.Add($lblTo)
+    $txtTo = New-Object System.Windows.Forms.TextBox
+    $txtTo.Location = New-Object System.Drawing.Point(55, 37)
+    $txtTo.Size = New-Object System.Drawing.Size(190, 20)
+    $txtTo.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $traceForm.Controls.Add($txtTo)
+    $lblTraceNote = New-Object System.Windows.Forms.Label
+    $lblTraceNote.Text = "Read-only -- no objects are modified. Exchange Online only (Get-MessageTraceV2 / Get-MessageTraceDetailV2), routed through Invoke-EXOCommand. Leave From/To blank to trace all mail in the date range."
+    $lblTraceNote.Location = New-Object System.Drawing.Point(264, 12)
+    $lblTraceNote.Size = New-Object System.Drawing.Size(488, 46)
+    $traceForm.Controls.Add($lblTraceNote)
+    $lblTZ = New-Object System.Windows.Forms.Label
+    $lblTZ.Text = "Show time in:"
+    $lblTZ.Location = New-Object System.Drawing.Point(766, 14)
+    $lblTZ.AutoSize = $true
+    $traceForm.Controls.Add($lblTZ)
+    $cboTimeZone = New-Object System.Windows.Forms.ComboBox
+    $cboTimeZone.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    @('Eastern', 'Central', 'Mountain', 'Pacific', 'UTC') | ForEach-Object { [void]$cboTimeZone.Items.Add($_) }
+    $cboTimeZone.SelectedItem = 'Central'
+    $cboTimeZone.Location = New-Object System.Drawing.Point(766, 34)
+    $cboTimeZone.Size = New-Object System.Drawing.Size(200, 20)
+    $traceForm.Controls.Add($cboTimeZone)
+    $lblStatus = New-Object System.Windows.Forms.Label
+    $lblStatus.Text = "Status:"
+    $lblStatus.Location = New-Object System.Drawing.Point(510, 72)
+    $lblStatus.AutoSize = $true
+    $traceForm.Controls.Add($lblStatus)
+    $cboStatus = New-Object System.Windows.Forms.ComboBox
+    $cboStatus.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    @('All Messages', 'Delivered', 'Failed', 'Quarantined', 'FilteredAsSpam', 'Pending', 'Expanded', 'GettingStatus') |
+        ForEach-Object { [void]$cboStatus.Items.Add($_) }
+    $cboStatus.SelectedIndex = 0
+    $cboStatus.Location = New-Object System.Drawing.Point(562, 69)
+    $cboStatus.Size = New-Object System.Drawing.Size(180, 20)
+    $traceForm.Controls.Add($cboStatus)
+    $lblSubject = New-Object System.Windows.Forms.Label
+    $lblSubject.Text = "Subject contains (optional):"
+    $lblSubject.Location = New-Object System.Drawing.Point(12, 100)
+    $lblSubject.AutoSize = $true
+    $traceForm.Controls.Add($lblSubject)
+    $txtSubject = New-Object System.Windows.Forms.TextBox
+    $txtSubject.Location = New-Object System.Drawing.Point(270, 97)
+    $txtSubject.Size = New-Object System.Drawing.Size(220, 20)
+    $txtSubject.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $traceForm.Controls.Add($txtSubject)
+    $lblStart = New-Object System.Windows.Forms.Label
+    $lblStart.Text = "Search From:"
+    $lblStart.Location = New-Object System.Drawing.Point(12, 129)
+    $lblStart.AutoSize = $true
+    $traceForm.Controls.Add($lblStart)
+    $dtpStart = New-Object System.Windows.Forms.DateTimePicker
+    $dtpStart.Format = [System.Windows.Forms.DateTimePickerFormat]::Short
+    $dtpStart.Location = New-Object System.Drawing.Point(100, 125)
+    $dtpStart.Size = New-Object System.Drawing.Size(120, 20)
+    $dtpStart.MinDate = (Get-Date).Date.AddDays(-30)
+    $dtpStart.MaxDate = (Get-Date).Date
+    $dtpStart.Value   = (Get-Date).Date.AddDays(-7)
+    $traceForm.Controls.Add($dtpStart)
+    $lblEnd = New-Object System.Windows.Forms.Label
+    $lblEnd.Text = "Through:"
+    $lblEnd.Location = New-Object System.Drawing.Point(240, 129)
+    $lblEnd.AutoSize = $true
+    $traceForm.Controls.Add($lblEnd)
+    $dtpEnd = New-Object System.Windows.Forms.DateTimePicker
+    $dtpEnd.Format = [System.Windows.Forms.DateTimePickerFormat]::Short
+    $dtpEnd.Location = New-Object System.Drawing.Point(300, 125)
+    $dtpEnd.Size = New-Object System.Drawing.Size(120, 20)
+    $traceForm.Controls.Add($dtpEnd)
+    $dtpStart.Add_ValueChanged({
+        $maxEnd = $dtpStart.Value.Date.AddDays(9)
+        $today  = (Get-Date).Date
+        if ($maxEnd -gt $today) { $maxEnd = $today }
+        $dtpEnd.MinDate = $dtpStart.Value.Date
+        $dtpEnd.MaxDate = $maxEnd
+        if ($dtpEnd.Value -lt $dtpStart.Value.Date) { $dtpEnd.Value = $dtpStart.Value.Date }
+        if ($dtpEnd.Value -gt $maxEnd) { $dtpEnd.Value = $maxEnd }
+    })
+    $dtpEnd.MinDate = $dtpStart.Value.Date
+    $initialMaxEnd = $dtpStart.Value.Date.AddDays(9)
+    if ($initialMaxEnd -gt (Get-Date).Date) { $initialMaxEnd = (Get-Date).Date }
+    $dtpEnd.MaxDate = $initialMaxEnd
+    $dtpEnd.Value   = $initialMaxEnd
+    $btnTraceRun = New-Object System.Windows.Forms.Button
+    $btnTraceRun.Text = "Trace"
+    $btnTraceRun.Location = New-Object System.Drawing.Point(440, 123)
+    $btnTraceRun.Size = New-Object System.Drawing.Size(90, 26)
+    $traceForm.Controls.Add($btnTraceRun)
+    $lblTraceStatus = New-Object System.Windows.Forms.Label
+    $lblTraceStatus.Text = ""
+    $lblTraceStatus.Location = New-Object System.Drawing.Point(12, 156)
+    $lblTraceStatus.Size = New-Object System.Drawing.Size(974, 40)
+    $traceForm.Controls.Add($lblTraceStatus)
+    # Results search/filter box -- added 2026-07-22, see header ADDED note.
+    # Client-side filter over the already-fetched results, no new EXO query.
+    $lblSearchGrid = New-Object System.Windows.Forms.Label
+    $lblSearchGrid.Text = "Filter loaded results:"
+    $lblSearchGrid.Location = New-Object System.Drawing.Point(12, 204)
+    $lblSearchGrid.AutoSize = $true
+    $traceForm.Controls.Add($lblSearchGrid)
+    $txtSearchGrid = New-Object System.Windows.Forms.TextBox
+    $txtSearchGrid.Location = New-Object System.Drawing.Point(150, 200)
+    $txtSearchGrid.Size = New-Object System.Drawing.Size(280, 22)
+    $txtSearchGrid.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $traceForm.Controls.Add($txtSearchGrid)
+    $btnSearchGrid = New-Object System.Windows.Forms.Button
+    $btnSearchGrid.Text = "Search"
+    $btnSearchGrid.Location = New-Object System.Drawing.Point(440, 198)
+    $btnSearchGrid.Size = New-Object System.Drawing.Size(80, 26)
+    $traceForm.Controls.Add($btnSearchGrid)
+    $btnClearSearchGrid = New-Object System.Windows.Forms.Button
+    $btnClearSearchGrid.Text = "Clear Filter"
+    $btnClearSearchGrid.Location = New-Object System.Drawing.Point(526, 198)
+    $btnClearSearchGrid.Size = New-Object System.Drawing.Size(90, 26)
+    $traceForm.Controls.Add($btnClearSearchGrid)
+    $grdTrace = New-Object System.Windows.Forms.DataGridView
+    $grdTrace.Location = New-Object System.Drawing.Point(12, 234)
+    $grdTrace.Size = New-Object System.Drawing.Size(974, 260)
+    $grdTrace.ReadOnly = $true
+    $grdTrace.AllowUserToAddRows = $false
+    $grdTrace.AllowUserToDeleteRows = $false
+    $grdTrace.AllowUserToResizeRows = $false
+    $grdTrace.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
+    $grdTrace.MultiSelect = $false
+    $grdTrace.AutoSizeColumnsMode = [System.Windows.Forms.DataGridViewAutoSizeColumnsMode]::Fill
+    $grdTrace.Font = New-Object System.Drawing.Font("Consolas", 9)
+    [void]$grdTrace.Columns.Add('Received', 'Received')
+    [void]$grdTrace.Columns.Add('Sender', 'Sender Address')
+    [void]$grdTrace.Columns.Add('Recipient', 'Recipient Address')
+    [void]$grdTrace.Columns.Add('Subject', 'Subject')
+    [void]$grdTrace.Columns.Add('Status', 'Status')
+    [void]$grdTrace.Columns.Add('Key', 'Key')
+    $grdTrace.Columns['Received'].FillWeight  = 15
+    $grdTrace.Columns['Sender'].FillWeight    = 20
+    $grdTrace.Columns['Recipient'].FillWeight = 20
+    $grdTrace.Columns['Subject'].FillWeight   = 30
+    $grdTrace.Columns['Status'].FillWeight    = 15
+    $grdTrace.Columns['Received'].ValueType   = [DateTime]
+    $grdTrace.Columns['Key'].Visible          = $false
+    foreach ($col in $grdTrace.Columns) { $col.SortMode = [System.Windows.Forms.DataGridViewColumnSortMode]::Automatic }
+    $traceForm.Controls.Add($grdTrace)
+    $lblDetail = New-Object System.Windows.Forms.Label
+    $lblDetail.Text = "Detail (double-click a row above to load it here):"
+    $lblDetail.Location = New-Object System.Drawing.Point(12, 502)
+    $lblDetail.AutoSize = $true
+    $traceForm.Controls.Add($lblDetail)
+    $txtDetail = New-Object System.Windows.Forms.TextBox
+    $txtDetail.Multiline = $true
+    $txtDetail.ReadOnly = $true
+    $txtDetail.ScrollBars = "Vertical"
+    $txtDetail.BackColor = [System.Drawing.Color]::WhiteSmoke
+    $txtDetail.Location = New-Object System.Drawing.Point(12, 522)
+    $txtDetail.Size = New-Object System.Drawing.Size(974, 130)
+    $txtDetail.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $traceForm.Controls.Add($txtDetail)
+    $btnRelease = New-Object System.Windows.Forms.Button
+    $btnRelease.Text = "Release from Quarantine"
+    $btnRelease.Location = New-Object System.Drawing.Point(12, 662)
+    $btnRelease.Size = New-Object System.Drawing.Size(160, 28)
+    $btnRelease.Enabled = $false
+    $traceForm.Controls.Add($btnRelease)
+    $btnExportCsv = New-Object System.Windows.Forms.Button
+    $btnExportCsv.Text = "Export to CSV"
+    $btnExportCsv.Location = New-Object System.Drawing.Point(180, 662)
+    $btnExportCsv.Size = New-Object System.Drawing.Size(110, 28)
+    $btnExportCsv.Enabled = $false
+    $traceForm.Controls.Add($btnExportCsv)
+    $btnTraceClose = New-Object System.Windows.Forms.Button
+    $btnTraceClose.Text = "Close"
+    $btnTraceClose.Location = New-Object System.Drawing.Point(886, 662)
+    $btnTraceClose.Size = New-Object System.Drawing.Size(100, 28)
+    $traceForm.Controls.Add($btnTraceClose)
+    $script:CurrentTraceResults        = @()
+    $script:CurrentTraceDisplayResults = @()
+    $script:CurrentTraceDetailRaw       = $null
+    $script:TraceSearchStart            = $null
+    $script:TraceSearchEnd              = $null
+    # Filters $script:CurrentTraceResults (the full, last-fetched result set)
+    # down to rows matching $SearchText -- case-insensitive substring match
+    # (-like is case-insensitive by default) against sender, recipient,
+    # subject, and status. Empty/whitespace search text returns everything.
+    function Get-FilteredTraceResults {
+        param([string]$SearchText)
+        if ([string]::IsNullOrWhiteSpace($SearchText)) { return $script:CurrentTraceResults }
+        $needle = "*$($SearchText.Trim())*"
+        $script:CurrentTraceResults | Where-Object {
+            ($_.SenderAddress    -and $_.SenderAddress    -like $needle) -or
+            ($_.RecipientAddress -and $_.RecipientAddress -like $needle) -or
+            ($_.Subject          -and $_.Subject          -like $needle) -or
+            ($_.Status           -and $_.Status           -like $needle)
+        }
+    }
+    function Update-TraceGridDisplay {
+        $tz = Get-SelectedTraceTimeZone -Label $cboTimeZone.SelectedItem
+        $grdTrace.Columns['Received'].HeaderText = "Received ($($cboTimeZone.SelectedItem))"
+        $grdTrace.Rows.Clear()
+        # Renders $script:CurrentTraceDisplayResults (the current filter's
+        # output), not $script:CurrentTraceResults directly -- see the
+        # results search/filter box header ADDED note.
+        foreach ($r in $script:CurrentTraceDisplayResults) {
+            $rowKey = "$($r.MessageTraceId)|$($r.RecipientAddress)"
+            $displayReceived = ConvertTo-TraceDisplayTime -UtcValue $r.Received -TimeZone $tz
+            [void]$grdTrace.Rows.Add($displayReceived, $r.SenderAddress, $r.RecipientAddress, $r.Subject, $r.Status, $rowKey)
+        }
+    }
+    $cboTimeZone.Add_SelectedIndexChanged({
+        Update-TraceGridDisplay
+        if ($script:CurrentTraceDetailRaw) {
+            $tz = Get-SelectedTraceTimeZone -Label $cboTimeZone.SelectedItem
+            $txtDetail.Text = Format-TraceDetail -Details $script:CurrentTraceDetailRaw -TimeZone $tz
+        }
+    })
+    $btnTraceRun.Add_Click({
+        $btnTraceRun.Enabled = $false
+        $btnRelease.Enabled = $false
+        $btnExportCsv.Enabled = $false
+        $txtDetail.Text = ""
+        $txtSearchGrid.Text = ""
+        $grdTrace.Rows.Clear()
+        $script:CurrentTraceResults = @()
+        $script:CurrentTraceDisplayResults = @()
+        $lblTraceStatus.ForeColor = [System.Drawing.Color]::Black
+        $lblTraceStatus.Text = "Running trace..."
+        try {
+            $fromAddr = $txtFrom.Text.Trim()
+            $toAddr   = $txtTo.Text.Trim()
+            $subject = $txtSubject.Text.Trim()
+            $sd = $dtpStart.Value.Date
+            $ed = $dtpEnd.Value.Date.AddDays(1).AddSeconds(-1)
+            $traceParams = @{ StartDate = $sd; EndDate = $ed }
+            # From/To are both independently optional -- see header REVISED
+            # note (2026-07-22, later). Leaving both blank traces every
+            # message in the date range.
+            if ($fromAddr) { $traceParams.SenderAddress    = $fromAddr }
+            if ($toAddr)   { $traceParams.RecipientAddress = $toAddr }
+            if ($subject) { $traceParams.Subject = $subject }
+            if ($cboStatus.SelectedItem -and $cboStatus.SelectedItem -ne 'All Messages') {
+                $traceParams.Status = $cboStatus.SelectedItem
+            }
+            $results = @(Invoke-MessageTrace @traceParams)
+            $script:CurrentTraceResults = $results
+            $script:CurrentTraceDisplayResults = $results
+            $script:CurrentTraceDetailRaw = $null
+            $script:TraceSearchStart = $sd
+            $script:TraceSearchEnd   = $ed
+            Update-TraceGridDisplay
+            $btnExportCsv.Enabled = ($results.Count -gt 0)
+            $lblTraceStatus.ForeColor = [System.Drawing.Color]::Black
+            $statusNote = if ($traceParams.Status) { "  Status: $($traceParams.Status)." } else { "" }
+            $lblTraceStatus.Text = "$($results.Count) result(s). $sd through $ed.$statusNote"
+        } catch {
+            $lblTraceStatus.ForeColor = [System.Drawing.Color]::Red
+            $lblTraceStatus.Text = Format-ErrorDetail -ErrorRecord $_ -Context 'Get-MessageTraceV2'
+        } finally {
+            $btnTraceRun.Enabled = $true
+        }
+    })
+    # Results search/filter handlers -- added 2026-07-22, see header ADDED
+    # note. Filters the grid over the already-fetched $script:CurrentTraceResults;
+    # no new Exchange Online call happens here.
+    $btnSearchGrid.Add_Click({
+        $script:CurrentTraceDisplayResults = @(Get-FilteredTraceResults -SearchText $txtSearchGrid.Text)
+        Update-TraceGridDisplay
+        $lblTraceStatus.ForeColor = [System.Drawing.Color]::Black
+        if ([string]::IsNullOrWhiteSpace($txtSearchGrid.Text)) {
+            $lblTraceStatus.Text = "$($script:CurrentTraceResults.Count) result(s)."
+        } else {
+            $lblTraceStatus.Text = "$($script:CurrentTraceDisplayResults.Count) of $($script:CurrentTraceResults.Count) result(s) match '$($txtSearchGrid.Text.Trim())'."
+        }
+    })
+    $txtSearchGrid.Add_KeyDown({
+        param($sender, $e)
+        if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
+            $btnSearchGrid.PerformClick()
+            $e.SuppressKeyPress = $true
+        }
+    })
+    $btnClearSearchGrid.Add_Click({
+        $txtSearchGrid.Text = ''
+        $script:CurrentTraceDisplayResults = $script:CurrentTraceResults
+        Update-TraceGridDisplay
+        $lblTraceStatus.ForeColor = [System.Drawing.Color]::Black
+        $lblTraceStatus.Text = "$($script:CurrentTraceResults.Count) result(s)."
+    })
+    function Find-TraceResultByKey {
+        # Searches the FULL $script:CurrentTraceResults (not the filtered
+        # display subset) -- a filtered-out row is never on screen to
+        # double-click/select in the first place, but every row that IS on
+        # screen is still a member of the full set, so this lookup doesn't
+        # need to change when a filter is active.
+        param([string]$RowKey)
+        $script:CurrentTraceResults | Where-Object { "$($_.MessageTraceId)|$($_.RecipientAddress)" -eq $RowKey } | Select-Object -First 1
+    }
+    $grdTrace.Add_SelectionChanged({
+        $btnRelease.Enabled = ($grdTrace.SelectedRows.Count -gt 0)
+    })
+    $grdTrace.Add_CellDoubleClick({
+        param($sender, $e)
+        if ($e.RowIndex -lt 0) { return }
+        $rowKey = $grdTrace.Rows[$e.RowIndex].Cells['Key'].Value
+        $rec = Find-TraceResultByKey -RowKey $rowKey
+        if (-not $rec) {
+            $txtDetail.Text = "Could not match that row back to a trace result -- run Trace again."
+            return
+        }
+        $txtDetail.Text = "Loading..."
+        try {
+            $details = Invoke-MessageTraceDetail -MessageTraceId $rec.MessageTraceId -RecipientAddress $rec.RecipientAddress `
+                -StartDate $script:TraceSearchStart -EndDate $script:TraceSearchEnd
+            $script:CurrentTraceDetailRaw = $details
+            $tz = Get-SelectedTraceTimeZone -Label $cboTimeZone.SelectedItem
+            $txtDetail.Text = Format-TraceDetail -Details $details -TimeZone $tz
+        } catch {
+            $script:CurrentTraceDetailRaw = $null
+            $txtDetail.Text = Format-ErrorDetail -ErrorRecord $_ -Context 'Get-MessageTraceDetailV2'
+        }
+    })
+    $btnRelease.Add_Click({
+        if ($grdTrace.SelectedRows.Count -eq 0) { return }
+        $rowKey = $grdTrace.SelectedRows[0].Cells['Key'].Value
+        $rec = Find-TraceResultByKey -RowKey $rowKey
+        if (-not $rec) {
+            $lblTraceStatus.ForeColor = [System.Drawing.Color]::Red
+            $lblTraceStatus.Text = "Could not match that row back to a trace result -- run Trace again."
+            return
+        }
+        $confirmSearch = [System.Windows.Forms.MessageBox]::Show(
+            "Look up quarantine entries for this message?`nSender: $($rec.SenderAddress)`nRecipient: $($rec.RecipientAddress)`nSubject: $($rec.Subject)",
+            "Confirm Quarantine Lookup", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($confirmSearch -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+        $btnRelease.Enabled = $false
+        try {
+            $matches = @(Find-QuarantineMatch -MessageId $rec.MessageId -RecipientAddress $rec.RecipientAddress `
+                -StartReceivedDate $script:TraceSearchStart -EndReceivedDate $script:TraceSearchEnd)
+            if ($matches.Count -eq 0) {
+                $lblTraceStatus.ForeColor = [System.Drawing.Color]::Black
+                $lblTraceStatus.Text = "No quarantine entry found for this message (it may not have been quarantined, may already be released, or may have expired -- quarantine data is only retained for a limited time)."
+                return
+            }
+            foreach ($qmsg in $matches) {
+                $confirmRelease = [System.Windows.Forms.MessageBox]::Show(
+                    "Quarantine match found:`nType: $($qmsg.Type)   Policy: $($qmsg.PolicyName)`nReceived: $($qmsg.ReceivedTime)   Release status: $($qmsg.ReleaseStatus)`n`nRelease this message to ALL original recipients?",
+                    "Confirm Release", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+                if ($confirmRelease -ne [System.Windows.Forms.DialogResult]::Yes) { continue }
+                Invoke-QuarantineRelease -QuarantineIdentity $qmsg.Identity
+                # CHANGED FROM ORIGINAL: the original logged "(Get-SelectedEnvLabel)".
+                # SRG has no Environment concept, so that label is simply
+                # omitted here -- nothing else about this log line changed.
+                Write-CompletedLog -Task "Released QuarantineMessage $($rec.RecipientAddress) (sender: $($rec.SenderAddress); subject: $($rec.Subject))"
+            }
+            $lblTraceStatus.ForeColor = [System.Drawing.Color]::Black
+            $lblTraceStatus.Text = "$($matches.Count) quarantine match(es) processed."
+        } catch {
+            $lblTraceStatus.ForeColor = [System.Drawing.Color]::Red
+            $lblTraceStatus.Text = Format-ErrorDetail -ErrorRecord $_ -Context 'Quarantine release'
+        } finally {
+            $btnRelease.Enabled = $true
+        }
+    })
+    $btnExportCsv.Add_Click({
+        # Exports $script:CurrentTraceDisplayResults -- the currently
+        # filtered/displayed set, matching what's on screen in the grid --
+        # not the full unfiltered $script:CurrentTraceResults. See header
+        # ADDED note (results search/filter box, 2026-07-22).
+        if ($script:CurrentTraceDisplayResults.Count -eq 0) { $lblTraceStatus.Text = "No results to export."; return }
+        $sfd = New-Object System.Windows.Forms.SaveFileDialog
+        $sfd.Filter = "CSV files (*.csv)|*.csv"
+        $filePart = if ($SmtpAddress) { ($SmtpAddress -replace '[^a-zA-Z0-9]','_') } else { 'All' }
+        $sfd.FileName = "SRG_MessageTrace_${filePart}_$(Get-Date -Format 'yyyyMMdd_HHmm').csv"
+        if ($sfd.ShowDialog($traceForm) -ne [System.Windows.Forms.DialogResult]::OK) { return }
+        try {
+            $tz = Get-SelectedTraceTimeZone -Label $cboTimeZone.SelectedItem
+            $script:CurrentTraceDisplayResults |
+                Select-Object @{Name = "Received ($($cboTimeZone.SelectedItem))"; Expression = { ConvertTo-TraceDisplayTime -UtcValue $_.Received -TimeZone $tz }},
+                              SenderAddress, RecipientAddress, Subject, Status, MessageTraceId |
+                Export-Csv -LiteralPath $sfd.FileName -NoTypeInformation -Encoding UTF8
+            $lblTraceStatus.ForeColor = [System.Drawing.Color]::Black
+            $lblTraceStatus.Text = "Exported $($script:CurrentTraceDisplayResults.Count) row(s) to $($sfd.FileName)."
+        } catch {
+            $lblTraceStatus.ForeColor = [System.Drawing.Color]::Red
+            $lblTraceStatus.Text = "Export failed: $($_.Exception.Message)"
+        }
+    })
+    $btnTraceClose.Add_Click({ $traceForm.Close() })
+    [void]$traceForm.ShowDialog()
+}
+#endregion
+
+Show-MessageTraceForm -SmtpAddress $SmtpAddress

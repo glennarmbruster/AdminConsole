@@ -1,0 +1,24 @@
+﻿{
+    "ButtonsPerRow":  7,
+    "Sections":  [
+                     {
+                         "Name":  "Admin Tools",
+                         "Rows":  6,
+                         "Accent":  "#6B7280"
+                     },
+                     {
+                         "Name":  "Daily Scripts",
+                         "Rows":  3,
+                         "Accent":  "#2E6BD6"
+                     },
+                     {
+                         "Name":  "Reporting",
+                         "Rows":  3,
+                         "Accent":  "#1F9BA8"
+                     },
+                     {
+                         "Name":  "Projects",
+                         "Rows":  2
+                     }
+                 ]
+}

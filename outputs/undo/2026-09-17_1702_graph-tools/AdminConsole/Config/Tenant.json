@@ -1,0 +1,97 @@
+﻿{
+    "_comment":  [
+                     "TENANT FACTS. This is the only file in the toolkit permitted to contain a",
+                     "domain name, a server name, or an organisation\u0027s internal vocabulary.",
+                     "Everything else reads from here. If a tenant name appears in a .ps1 file,",
+                     "that is a bug -- Test-Toolkit checks for it.",
+                     "",
+                     "Engineer preferences (paths, browser profiles) live in Settings.json, not",
+                     "here. This file is the same on every machine at a tenant; that one is not."
+                 ],
+    "TenantName":  "Express",
+    "PrimaryDomain":  "expresspros.com",
+    "OnMicrosoftDomain":  "expresspros.onmicrosoft.com",
+    "Capabilities":  {
+                         "ExchangeOnline":  true,
+                         "SharePointOnline":  true,
+                         "OnPremAD":  true,
+                         "OnPremExchange":  true,
+                         "Pim":  true,
+                         "PimTimer":  true
+                     },
+    "Directories":  [
+                        {
+                            "Id":  "HQ",
+                            "Label":  "HQ",
+                            "Domain":  "expresspersonnel.com",
+                            "DomainControllers":  [
+
+                                                  ],
+                            "SharedMailboxOu":  "expresspersonnel.com/Accounts/Resource Mailbox",
+                            "DistributionGroupOu":  "expresspersonnel.com/Exchange Distribution Groups",
+                            "IsDefault":  false
+                        },
+                        {
+                            "Id":  "Franchise",
+                            "Label":  "Franchise",
+                            "Domain":  "franchises.expresspersonnel.com",
+                            "DomainControllers":  [
+                                                      "fran-vm-dc01.franchises.expresspersonnel.com",
+                                                      "fran-vm-dc02.franchises.expresspersonnel.com",
+                                                      "fran-vm-dc03.franchises.expresspersonnel.com",
+                                                      "fran-vm-dc04.franchises.expresspersonnel.com",
+                                                      "fran-vm-dc05.franchises.expresspersonnel.com",
+                                                      "fran-vm-dc06.franchises.expresspersonnel.com",
+                                                      "fran-vm-dc07.franchises.expresspersonnel.com",
+                                                      "fran-vm-dc08.franchises.expresspersonnel.com"
+                                                  ],
+                            "SharedMailboxOu":  "",
+                            "DistributionGroupOu":  "",
+                            "IsDefault":  false
+                        }
+                    ],
+    "OnPremExchange":  {
+                           "ServerUri":  "exch-vm-hybrid1.expresspersonnel.com",
+                           "PreferredDomainController":  ""
+                       },
+    "Pim":  {
+                "DurationHours":  4,
+                "GroupsEligibleUrl":  "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadgroup",
+                "RolesEligibleUrl":  "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadmigratedroles",
+                "GroupsActiveUrl":  "",
+                "RolesActiveUrl":  ""
+            },
+    "LicenseGroups":  [
+                          {
+                              "Name":  "E1 License HQ",
+                              "Sku":  "E1",
+                              "Directory":  "HQ",
+                              "RemoveOnTerm":  true
+                          },
+                          {
+                              "Name":  "E1 License Fran",
+                              "Sku":  "E1",
+                              "Directory":  "Franchise",
+                              "RemoveOnTerm":  true
+                          },
+                          {
+                              "Name":  "E5 License HQ - Full",
+                              "Sku":  "E5",
+                              "Directory":  "HQ",
+                              "RemoveOnTerm":  true
+                          },
+                          {
+                              "Name":  "E5 License Fran - Full",
+                              "Sku":  "E5",
+                              "Directory":  "Franchise",
+                              "RemoveOnTerm":  true
+                          }
+                      ],
+    "SharePoint":  {
+                       "AdminUrl":  "https://expresspros-admin.sharepoint.com",
+                       "MySiteHost":  "https://expresspros-my.sharepoint.com"
+                   },
+    "FeatureRequest": { "Recipient": "glenn.armbruster@expresspros.com" },
+    
+    "Theme":  "Express"
+}

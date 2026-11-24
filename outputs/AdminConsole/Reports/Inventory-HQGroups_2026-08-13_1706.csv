@@ -1,0 +1,297 @@
+﻿Name,PrimarySmtpAddress,RecipientTypeDetails,OU
+DocumentManagement,DocumentManagement@expresspros.com,MailNonUniversalGroup,HQ
+SCCM Admins,SCCMTeam@ExpressPros.com,MailNonUniversalGroup,HQ
+"""Business Intelligence""",BusinessIntelligence@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# ACA Surcharge,ACASurcharge@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Admin Advance,Intermediatetraining@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Auto Email,AutoEmail2@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Building Security,BuildingSecurity@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Business Development,BusinessDevelopment@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Canadian Payroll Group,CanadianPayrollGroup@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Cash Management,CashManagement@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Cognos,Cognos@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Cognos Admins,CognosAdmins@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Commission Team,CommissionTeam@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Communications,Communications1@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Discovery Day Presenters,DiscoveryDayPresenters@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# DRST,DRST@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# ESP Group,ESPGroup@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Fast Track,FastTrack@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# FedSource,FedSource1@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Franchise Agreement #4,FranchiseAgreement4@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Franchise Developers,FranchiseDevelopers@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Franchise Owners (Canadian),FranchiseCanadianOwners@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Franchise Owners A-F,FranchiseOwnersA-F@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Franchise Owners G-L,FranchiseOwnersG-L@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Franchise Owners M-R,FranchiseOwnersM-R@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Franchise Owners S-Z,FranchiseOwnersS-Z@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Franchising Directors,FranchisingDirectors@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Fun Committee,EngageExpress@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Garnishments,Garnishments@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# GEAC,GEAC@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# GL Task Force,GLTaskForce@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Growth Task Force,GrowthTaskForce@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# HR Billing,HRBilling@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Initial Launch Group,InitialLaunchGroup@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Internal PR,InternalPR@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# International,International@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# International Team,InternationalTeam@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Internet Core Work Team,InternetCoreWorkTeam@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Internet Initiative,InternetInitiative@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# ISO 9000,ISO9000@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Lead Asst,LeadAsst@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Multimedia Task Force,MultimediaTaskForce@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# New - Term Employee List,New-TermEmployeeList@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# New Office,NewOffice@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# One World,OneWorld@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Operations - Vice Presidents,Operations-VicePresidents@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# PC Programming,PCProgramming@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# POC,POC@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# POC ESC,POCESC@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Project Ops,ProjectOps@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Q4 Developers,Q4Developers@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Recruiting Armada,RecruitingArmada@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Refresh Leadership Live Simulcast,Refreshleadershiplivesimulcast@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Resale Group,ResaleGroup@expresspros.com,MailUniversalDistributionGroup,HQ
+# ServerAdmins,ServerAdmins@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Single Sign On,singlesignon@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Support Services,SupportServices@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Tax Adjustments,TaxAdjustments@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# The Next Generation Group,TheNextGenerationGroup@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Trainer's Communication,TrainersCommunication@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Value Story,ValueStory@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Workcomp Accounting,WorkcompAccounting@ExpressPros.com,MailUniversalDistributionGroup,HQ
+# Zone VPs,ZoneVPs@ExpressPros.com,MailUniversalDistributionGroup,HQ
+ADO Administrators,ADO.Administrators@expresspros.com,MailUniversalDistributionGroup,HQ
+Adobe Avionte,Adobe.Avionte@expresspros.com,MailUniversalDistributionGroup,HQ
+Advantage Loyalty,AdvantageLoyalty@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Alcoa Team,Alcoa@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Application Insights,ApplicationInsights@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Application Support,Application_Support@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Applications,Applications@ExpressPros.com,MailUniversalDistributionGroup,HQ
+AR.TerrellTX,AR.TerrellTX@expresspros.com,MailUniversalDistributionGroup,HQ
+ARPay BOA,ARPayBOK@ExpressPros.com,MailUniversalDistributionGroup,HQ
+ARPay Error,ARPayError@ExpressPros.com,MailUniversalDistributionGroup,HQ
+ARPay Error BOA,ARPayError.BOA@ExpressPros.com,MailUniversalDistributionGroup,HQ
+A-Team,A-Team@ExpressPros.com,MailUniversalDistributionGroup,HQ
+avionte-integration,avionte-integration@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Azure Secret Renewal,AzureSecretRenewal@expresspros.com,MailUniversalDistributionGroup,HQ
+AzureAdmins,AzureAdmins@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Barrette,Barrette@expresspros.com,MailUniversalDistributionGroup,HQ
+BI Engineers,BI_Engineers@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Biscon Business Continuity Team,BisconTeam@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Bomgar Admins,BomgarAdmins@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Bugapalooza,Bugapalooza@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Building Backup Team,BuildingBackupTeam@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Business Architecture,BusinessArchitecture@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Canadian Avionte Document Library,Adobe.AvionteCan@expresspros.com,MailUniversalDistributionGroup,HQ
+CashPosted Bank One,CashPostedBankOne@ExpressPros.com,MailUniversalDistributionGroup,HQ
+CashPosted BOA,CashPostedBOK@ExpressPros.com,MailUniversalDistributionGroup,HQ
+CashPosted LOB,CashPostedLOB@ExpressPros.com,MailUniversalDistributionGroup,HQ
+CashPosted Wells Fargo,CashPostedWellsFargo@ExpressPros.com,MailUniversalDistributionGroup,HQ
+CCR Claims,CCRClaims@expresspros.com,MailUniversalDistributionGroup,HQ
+CDC Processor Alerts,CDCProcessorAlerts@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Certificate Management,Certificate-Management@expresspros.com,MailUniversalDistributionGroup,HQ
+Code and Rate,CodeandRate@expresspros.com,MailUniversalDistributionGroup,HQ
+Cognos Reports,CognosReports@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Colgate,Colgate@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Continuity Management Team,ContinuityManagementTeam@expresspros.com,MailUniversalDistributionGroup,HQ
+Cory-Family,cory-family@ExpressPros.com,MailUniversalDistributionGroup,HQ
+CovidVaccineHQ,CovidVaccineHQ@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Crisis Check-in People (CIPs),CrisisCheck-inPeople@ExpressPros.com,MailUniversalDistributionGroup,HQ
+CSM Notifications,CSMNotifications@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Data Services,DataServices@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Deputy Integration,Deputy-Integration@expresspros.com,MailUniversalDistributionGroup,HQ
+Developer Insider Group,developerinsidergroup@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Developer Reps,DeveloperReps@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Developers All,CorporateDevelopers@expresspros.com,MailUniversalDistributionGroup,HQ
+Direct Deposit CHANGED,DirectDepositCHANGED@ExpressPros.com,MailUniversalDistributionGroup,HQ
+dl-dbx-dah-prod-support,dl-dbx-dah-prod-support@expresspros.com,MailUniversalDistributionGroup,HQ
+dl-dbx-dih-prod-support,dl-dbx-dih-prod-support@expresspros.com,MailUniversalDistributionGroup,HQ
+DockerAdmin,DockerAdmin@ExpressPros.com,MailUniversalDistributionGroup,HQ
+DocuSign Admin,docusign.admin@ExpressPros.com,MailUniversalDistributionGroup,HQ
+DTP Triage,DTPTriage@expresspros.com,MailUniversalDistributionGroup,HQ
+E1 Admins,E1Admins@ExpressPros.com,MailUniversalDistributionGroup,HQ
+EEP Owners,EEPOwners@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Employee Check,Do-Not-Reply@expresspros.com,MailUniversalDistributionGroup,HQ
+Employment Specialists,DesotoSpecialists@ExpressPros.com,MailUniversalDistributionGroup,HQ
+'EndPoint Configuration and Security',EndPointConfiguration@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Enterprise Project Management Office,EPMO@ExpressPros.com,MailUniversalDistributionGroup,HQ
+EPMO Interdepartmental Review,EPMOInterdepartmentalReview@expresspros.com,MailUniversalDistributionGroup,HQ
+Equipment Consultants,EquipmentConsultants@ExpressPros.com,MailUniversalDistributionGroup,HQ
+EU – Today’s Trends,EU–TodaysTrends@expresspros.com,MailUniversalDistributionGroup,HQ
+Everyone,Everyone@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Everyone A - C,EveryoneA-Cnew@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Everyone D - F,EveryoneD-Fnew@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Everyone G - L,EveryoneG-Lnew@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Everyone M - P,EveryoneM-Pnew@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Everyone Q - T,EveryoneQ-Tnew@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Everyone U - Z,EveryoneU-Znew@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Exceptions,Exceptions1@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Express Cybersecurity,cybersecurity@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Express Healthcare Professionals,EHPFranchisees@Expresspros.com,MailUniversalDistributionGroup,HQ
+Express India Team,ExpressIndiaTeam@expresspros.com,MailUniversalDistributionGroup,HQ
+Express Jobs Development Group,Expressjobsdev@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Express University Online,ExpressUniversityOnline2@ExpressPros.com,MailUniversalDistributionGroup,HQ
+ExpressPAC,ExpressPAC@ExpressPros.com,MailUniversalDistributionGroup,HQ
+ExpressSimple,ExpressSimple@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Extend HR,ExtendHR@ExpressPros.com,MailUniversalDistributionGroup,HQ
+ExtendHR Benefits,Benefits@ExtendHR.com,MailUniversalDistributionGroup,HQ
+Fed Source Task Orders,FedSourceTaskOrders@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Fed Source Task Orders Confirmation,FedSourceTaskOrdersConfirmation@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Franchise Email Setup,FranchiseEmailSetup@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Franchise Owners (US Only),FranchiseownersUS@ExpressPros.com,MailUniversalDistributionGroup,HQ
+FranchiseServerReplacements,FranchiseServerReplacements@ExpressPros.com,MailUniversalDistributionGroup,HQ
+FrontDesk,FrontDesk@ExpressPros.com,MailUniversalDistributionGroup,HQ
+FSSCBetaGroup,FSSCBetaGroup@ExpressPros.com,MailUniversalDistributionGroup,HQ
+GANotify,GANotify@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Health and Safety,healthandsafety@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Health Trust,HealthTrust@expresspros.com,MailUniversalDistributionGroup,HQ
+Healthcare Leadership,HealthcareLeadership@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Healthcarejobs,Healthcarejobs@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Houston(BayArea) and TexasCity,HouBA.TXCity@ExpressPros.com,MailUniversalDistributionGroup,HQ
+HQ - VDI Users,HQ-VDI.Users@expresspros.com,MailUniversalDistributionGroup,HQ
+HQ ITS,HQITS@expresspros.com,MailUniversalDistributionGroup,HQ
+HQ Jobs,HQJobs@ExpressPros.com,MailUniversalDistributionGroup,HQ
+HQ Ops Team,HQOps@ExpressPros.com,MailUniversalDistributionGroup,HQ
+HQ Payroll,HQPayroll@ExpressPros.com,MailUniversalDistributionGroup,HQ
+HQ Reports,HQReports1@ExpressPros.com,MailUniversalDistributionGroup,HQ
+HQIT-Alerts,hqit-alerts@ExpressPros.com,MailUniversalDistributionGroup,HQ
+HQKantola,HQKantola@ExpressPros.com,MailUniversalDistributionGroup,HQ
+HQMA,HQMS@ExpressPros.com,MailUniversalDistributionGroup,HQ
+ILC2023,ILC2023@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Information Systems Alerts,InformationSystemsAlerts@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Infrastructure Notification,InfrastructureNotification@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Internal Corp A-M,InternalCorpA-M@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Internal Corp N-Z,InternalCorpN-Z@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Internal Corporate Employees,Internal_Corporate_Employees@ExpressPros.com,MailUniversalDistributionGroup,HQ
+ITInfraLeadership,ITInfraLeadership@ExpressPros.com,MailUniversalDistributionGroup,HQ
+ITS FTE,ITSFTE@expresspros.com,MailUniversalDistributionGroup,HQ
+ITS Infrastructure Leadership,ITSInfrastructureLeadership@expresspros.com,MailUniversalDistributionGroup,HQ
+ITS Leadership,ITSLeadership@expresspros.com,MailUniversalDistributionGroup,HQ
+jobs.testoffice2000.uat,jobs.testoffice2000.uat@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Kent Industrial,KentIndustrial@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Longmont Express,longmontexpress@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Mobile Developers,Mobile.Developers@expresspros.com,MailUniversalDistributionGroup,HQ
+Mobile Devices,MobileDevices@ExpressPros.com,MailUniversalDistributionGroup,HQ
+MorrisTown Team,MorrisTown@expresspros.com,MailUniversalDistributionGroup,HQ
+Mountain Desert Franchisee Group,MtnDesertFranGrp@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Mountain Region Owner and Manager list,Mtnregionowners@ExpressPros.com,MailUniversalDistributionGroup,HQ
+MTaccounting,MTaccounting@ExpressPros.com,MailUniversalDistributionGroup,HQ
+MtnDesertFranchisee&MgrsGrp@Expresspros.com,UTNVFranchisees&Mgrs@ExpressPros.com,MailUniversalDistributionGroup,HQ
+MtnDesertOfficeGrp,MtnDesertRegion@ExpressPros.com,MailUniversalDistributionGroup,HQ
+NISS,NISS@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Notaries,notaries@ExpressPros.com,MailUniversalDistributionGroup,HQ
+o365-AccountAdmins,o365-AccountAdmins@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Office Payroll,OfficePayroll@ExpressPros.com,MailUniversalDistributionGroup,HQ
+onboardingAbleAll,onboardingAbleAll@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Operations Team,OperationsTeam@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Ops Dev,OpsDev@ExpressPros.com,MailUniversalDistributionGroup,HQ
+PIM Approver O365,PIMApproverO365@expresspros.com,MailUniversalDistributionGroup,HQ
+PKI Administrators,PKIAdministrators@ExpressPros.com,MailUniversalDistributionGroup,HQ
+PNW Region,PNWRegion@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Power System Support,PowerSystemSupport@expresspros.com,MailUniversalDistributionGroup,HQ
+Premier Proactive,PremierProactive@ExpressPros.com,MailUniversalDistributionGroup,HQ
+PrinterAdmins,MFPShipNotice@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Product Management,ProductManagement@expresspros.com,MailUniversalDistributionGroup,HQ
+Professional Staffing,ProfessionalStaffing@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Q4 Exchange Service Notification,Q4ESN@ExpressPros.com,MailUniversalDistributionGroup,HQ
+QTM,QTM@expresspros.com,MailUniversalDistributionGroup,HQ
+Quality Assurance,QualityAssurance@ExpressPros.com,MailUniversalDistributionGroup,HQ
+QuestDBNotification,QuestDBNotification@ExpressPros.com,MailUniversalDistributionGroup,HQ
+"Recruiting Houston(Bay Area) and Texas City, TX",BestOfTX@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Remote ITS,RemoteITS@expresspros.com,MailUniversalDistributionGroup,HQ
+RemoteQTM,RemoteQTM@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Reports,Reports@ExpressPros.com,MailUniversalDistributionGroup,HQ
+SA Leaders,SALeaders@ExpressPros.com,MailUniversalDistributionGroup,HQ
+SCCM Alerts,SCCMAlerts@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Security 911 Alerts,Security911Alerts@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Security Cameras,SecurityCameras@expresspros.com,MailUniversalDistributionGroup,HQ
+Security Notifications,SecurityNotifications@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Sell Fedsource-LA,SellFedsource-LA@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Service Line,ServiceLine@expresspros.com,MailUniversalDistributionGroup,HQ
+Service Now Support,ServiceNowSupport@expresspros.com,MailUniversalDistributionGroup,HQ
+Skilled Trades Service Line Team,SkilledTradesTeam@expresspros.com,MailUniversalDistributionGroup,HQ
+SN-BIAnalysts,SN-BIAnalysts@expresspros.com,MailUniversalDistributionGroup,HQ
+SN-BIDataGov,SN-BIDataGov@expresspros.com,MailUniversalDistributionGroup,HQ
+SN-BIDataVisual,SN-BIDataVisual@expresspros.com,MailUniversalDistributionGroup,HQ
+SN-BIMarketIntelligence,SN-BIMarketIntelligence@expresspros.com,MailUniversalDistributionGroup,HQ
+SN-BISales,SN-BISales@expresspros.com,MailUniversalDistributionGroup,HQ
+SNowImplementation,SNowImplementation@ExpressPros.com,MailUniversalDistributionGroup,HQ
+SQL Replication,sqlreplication@ExpressPros.com,MailUniversalDistributionGroup,HQ
+SQL Status,sqlstatus@ExpressPros.com,MailUniversalDistributionGroup,HQ
+SRG Franchisees,ProfessionalStaffingFranchisees@ExpressPros.com,MailUniversalDistributionGroup,HQ
+SRG Owners,SRGOwners@expresspros.com,MailUniversalDistributionGroup,HQ
+Strategic Applications,StrategicApplications@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Strategic Apps,StrategicApps@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Strategic Sales & Development,StrategicSalesDevelopment@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Susan/Ira,us@ExpressPros.com,MailUniversalDistributionGroup,HQ
+TaxGroup,TaxGroup@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Team Midtown Dallas,TeamMidtownDallas@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Tech Support Office Setup,TechOfficeSetup@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Temporary Forwarding,TemporaryForwarding@expresspros.com,MailUniversalDistributionGroup,HQ
+Toastmaster,Toastmaster@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Tufftorq,Tufftorq@ExpressPros.com,MailUniversalDistributionGroup,HQ
+UITeam,UI@expresspros.com,MailUniversalDistributionGroup,HQ
+Underwriting,Underwriting@ExpressPros.com,MailUniversalDistributionGroup,HQ
+VirtualHR,VirtualHR@ExpressPros.com,MailUniversalDistributionGroup,HQ
+VzeMeraki,VzeMeraki@ExpressPros.com,MailUniversalDistributionGroup,HQ
+W2 Address changes,W2Addresschanges1@ExpressPros.com,MailUniversalDistributionGroup,HQ
+West Zone Developer Group,WZDevelopers@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Zone Captain,ZoneCaptain@ExpressPros.com,MailUniversalDistributionGroup,HQ
+Zoom Info Integration,ZoomInfo-Integration@expresspros.com,MailUniversalDistributionGroup,HQ
+# Accounts Receivable,AccountsReceivable@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Administration,Administration2@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Administrative Assistants,AdministrativeAssistants@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Benefits,Benefits2@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Corporate Accounting,CorporateAccounting@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Corporate Developers,CorporateDevelopers1@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# DataComm,DataComm@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Developer Reps International,DeveloperRepsInternational@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Developers,Developers@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Events,Events@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Everyone Corporate Internal,Evo@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# FEDERAL ACCOUNTS,FEDERALACCOUNTS@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Financial Accounting,FinancialAccounting@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Financial Analysis Team,FinancialAnalysisTeam@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Franchise Accounting,FranchiseAccounting@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Franchise Sales,FranchiseSales@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Franchising Group,FranchisingGroup@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# HQTS,HQTS@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Human Resources,HumanResources2@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Information Systems,InformationSystems@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Leadership Team,LeadershipTeam@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Legal,Legal@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Network Services,NetworkServices@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Office Close Down,CloseDown@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Payroll,Payroll@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# PR,PR@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Receptionist,Receptionist@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Replication,Replication@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Risk Management,RiskManagement@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Sales,Sales1@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Technical Support,TechnicalSupport@ExpressPros.com,MailUniversalSecurityGroup,HQ
+# Vice Presidents,VicePresidents@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Airmail2 Admins,Airmail2Admins@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Airmail2 Operators,Airmail2Operators@ExpressPros.com,MailUniversalSecurityGroup,HQ
+AppServicesAdmin,AppServicesAdmin@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Colligo Users,ColligoUsers@ExpressPros.com,MailUniversalSecurityGroup,HQ
+CRM,CRM@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Disaster Recovery,DisasterRecovery@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Everyone-Restricted-Senders,Everyone-Restricted-Senders@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Express University,ExpressUniversity1@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Franchise Development,FranchiseDevelopment2@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Franchise Systems,FranchiseSystems@ExpressPros.com,MailUniversalSecurityGroup,HQ
+iMeet Live,iMeetLive@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Internal HRC,InternalOOD@ExpressPros.com,MailUniversalSecurityGroup,HQ
+M365 Team,M365Team@expresspros.com,MailUniversalSecurityGroup,HQ
+MarComm Dept,MarCom@expresspros.com,MailUniversalSecurityGroup,HQ
+Outlook Security Bypass,OutlookSecurityBypass@ExpressPros.com,MailUniversalSecurityGroup,HQ
+"Portland, OR (SRG)",PortlandOR@SRGExpress.com,MailUniversalSecurityGroup,HQ
+Professional Staffing HQ,ProfessionalStaffingHQ@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Q4Team,Q4Team@ExpressPros.com,MailUniversalSecurityGroup,HQ
+SMB-Access-Jobs.MayfieldKY,SMB-Access-Jobs.MayfieldKY@ExpressPros.com,MailUniversalSecurityGroup,HQ
+SMB-Access-Sales.MayfieldKY,SMB-Access-Sales.MayfieldKY@ExpressPros.com,MailUniversalSecurityGroup,HQ
+Technical Procurement and Special Projects,SpecialProjects2@ExpressPros.com,MailUniversalSecurityGroup,HQ
+TechTier3,TechTier3@ExpressPros.com,MailUniversalSecurityGroup,HQ
+All HQ Rooms,AllHQRooms@ExpressPros.com,RoomList,HQ

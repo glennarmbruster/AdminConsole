@@ -1,0 +1,829 @@
+<#
+.SYNOPSIS
+    WinForms tool to grant or remove Exchange mailbox access (Full Access,
+    Send-As) and/or OneDrive site collection admin access -- merged from the
+    operator's two separate tools, Set-MailboxAccess.ps1 and
+    onedriveaccess.ps1, into a single console.
+.DESCRIPTION
+    REVISED 2026-07-24 -- merge of two previously separate tools:
+      - Set-MailboxAccess.ps1 (Full Access / Send-As delegation on Exchange
+        Online mailboxes, many-to-many mailbox x user)
+      - onedriveaccess.ps1 (SharePoint Online site collection admin rights
+        on a mailbox's OneDrive, many-to-many user x custodian)
+    Both tools shared the same many-to-many shape (one set of targets, one
+    set of grantees, one action, apply to every combination) and the same
+    two-box-plus-radio-plus-Parse/Run-preview UX, so merging them into one
+    console with a single, wider set of action choices removes the need to
+    separately track/run two tools for what is operationally one workflow:
+    "give this person access to that account's stuff."
+
+    Intake boxes, unified from the two source tools' four boxes down to two:
+      Mailbox(es)        -- was "Mailbox(es)" in Set-MailboxAccess.ps1 AND
+                            "Disabled User(s)" in onedriveaccess.ps1. Same
+                            concept in both: the target account. The
+                            OneDrive site URL is derived from THIS box's
+                            address(es), exactly the way onedriveaccess.ps1
+                            derived it from its own "Disabled User(s)" box.
+      User(s)/Manager(s) -- was "User(s)" in Set-MailboxAccess.ps1 AND
+                            "Custodian(s)" in onedriveaccess.ps1. Same
+                            concept in both: the grantee(s) receiving
+                            access. Every User/Manager in this box receives
+                            the selected access on every Mailbox in the
+                            other box (same many-to-many cross-product both
+                            source tools used).
+
+    Access Type (mutually exclusive radio buttons, NOT independent
+    checkboxes -- see DESIGN NOTE below):
+      Full Access        -- Add-/Remove-MailboxPermission, AccessRights
+                            FullAccess, AutoMapping on (not configurable
+                            from this form, matching Set-MailboxAccess.ps1's
+                            original behavior).
+      Send-As            -- Add-/Remove-RecipientPermission, AccessRights
+                            SendAs. On Grant, also sets
+                            MessageCopyForSentAs = $true on the mailbox
+                            (once per mailbox) so Send-As mail lands in Sent
+                            Items -- the original tool only did this on the
+                            combined Full+SendAs path since that was the
+                            only path that included Send-As; this merge
+                            applies it any time Send-As is being granted,
+                            standalone or combined, since the flag's whole
+                            purpose is tied to Send-As itself, not to Full
+                            Access. Per the original tool's own documented
+                            rule, MessageCopyForSentAs is NEVER cleared on
+                            Remove, in any combination.
+      OneDrive           -- Set-SPOUser -IsSiteCollectionAdmin, on the site
+                            derived from the Mailbox box (see
+                            onedriveaccess.ps1's original URL construction,
+                            moved here unchanged: local-part before @, dots
+                            -> underscores, appended to
+                            https://expresspros-my.sharepoint.com/personal/).
+      Full & Send-As     -- both Full Access and Send-As operations above,
+                            against the same mailbox/user pairs, in one run.
+      Full & OneDrive    -- both Full Access and OneDrive operations above.
+
+    NOT offered, by design, per the operator's explicit rule ("there should
+    never be a Send-As, OneDrive need"): Send-As + OneDrive, and Full +
+    Send-As + OneDrive, are not selectable combinations. This isn't a
+    validation check that blocks an otherwise-selectable state -- Send-As
+    and OneDrive together is simply never one of the five radio options, so
+    it's structurally impossible to request, not just discouraged.
+
+    DESIGN NOTE on "checkboxes" vs radio buttons: the operator described
+    these five options as checkboxes. They're built here as mutually
+    exclusive RadioButtons instead, for two reasons: (1) both source tools
+    already modeled their own single-action-per-run choice as a RadioButton
+    group ("Action (mutually exclusive radio buttons)" in both originals'
+    own headers), and this merge combines those two groups into one wider
+    group of the same kind, not a new interaction model; (2) the five
+    listed options are themselves five complete, mutually exclusive end
+    states (exactly one is performed per run), not five independent toggles
+    that could sensibly all be checked at once -- modeling them as actual
+    checkboxes would either need the same mutual-exclusion logic layered
+    back on top (checking one unchecking the others, functionally identical
+    to radio buttons but a less standard control for that behavior), or
+    would need to reject nonsensical states like "Full Access" and "Full &
+    Send-As" both checked simultaneously. If independent, freely-combinable
+    checkboxes (Full Access / Send-As / OneDrive as three separate,
+    optional toggles) are what's actually wanted instead of five preset
+    combinations, that's a straightforward follow-up change -- flag it and
+    it can be redone that way, with Send-As/OneDrive mutual exclusion
+    enforced by disabling whichever one isn't compatible with the other's
+    current check state.
+
+    Grant vs Remove is a second, separate two-way radio group (defaults to
+    Grant). Combined with the five Access Type options above, Remove is now
+    more precise than either original tool's own Remove:
+    Set-MailboxAccess.ps1's single "Remove All Access" always removed BOTH
+    FullAccess and Send-As regardless of what was actually granted; here,
+    Remove + "Full Access" removes only Full Access, Remove + "Send-As"
+    removes only Send-As, Remove + "OneDrive" removes only OneDrive admin,
+    and the two combined options remove both of their respective pieces --
+    same SKIP-if-not-present logic as both original tools (removing
+    something that isn't there is reported, not treated as an error).
+
+    Pre-flight: Get-Mailbox resolution for every Mailbox and User/Manager
+    runs ONLY when the selected Access Type touches Exchange (Full Access
+    and/or Send-As) -- matching Set-MailboxAccess.ps1's original pre-flight
+    exactly. A pure OneDrive run skips it entirely, matching
+    onedriveaccess.ps1's original behavior of not requiring an Exchange
+    Online connection at all for a SharePoint-only operation. If any
+    identity fails to resolve during a pre-flight that DOES run, no changes
+    are made at all (Exchange OR OneDrive), same all-or-nothing guarantee
+    the original Set-MailboxAccess.ps1 had.
+
+    ADDED 2026-07-24 -- OneDrive link surfaced first: per operator request,
+    whenever the run includes a OneDrive grant (Access Type OneDrive or
+    Full & OneDrive, Mode = Grant) and at least one User/Manager succeeded
+    on a given Mailbox's OneDrive, the very first line(s) of the Result box
+    read "OneDrive can be accessed via the following link: <url>" -- one
+    such line per Mailbox with a successful grant, ahead of the rest of the
+    run log. This only appears on a successful Grant (not Remove, and not
+    for a Mailbox where every attempted grant failed), so the message is
+    never shown for access that doesn't actually exist.
+
+    What this script does NOT change (carried over from both originals):
+      - MessageCopyForSentAs is never cleared, even on Remove.
+      - AutoMapping is always enabled on a Full Access grant, not
+        configurable from this form.
+      - No on-prem Active Directory attributes are modified (both source
+        tools were cloud-only; this merge stays cloud-only too).
+      - No other SharePoint site permissions, sharing settings, or document
+        library permissions are touched; no OneDrive files/folders are
+        moved, deleted, or shared; IsSiteCollectionAdmin on other existing
+        admins is never cleared.
+
+    Environment: Exchange Online AND/OR SharePoint Online, depending on
+    Access Type -- see the dynamic warning label, which updates with the
+    Access Type selection to say exactly which connection(s) the current
+    selection needs. Connections are assumed already established; this
+    script never calls Connect-/Disconnect- for either service, same as
+    both originals.
+.NOTES
+    Author          : Glenn Armbruster
+    Created         : 2026-06-18 (Set-MailboxAccess.ps1), 2026-07-01
+                       (onedriveaccess.ps1)
+    Revised         : 2026-07-24 (merged into MailboxOneDriveAccess.ps1 --
+                       see REVISED note above)
+    Run from        : Standard PowerShell with ExchangeOnlineManagement
+                       and/or Microsoft.Online.SharePoint.PowerShell loaded,
+                       depending on Access Type
+    Required modules: ExchangeOnlineManagement (Full Access / Send-As),
+                       Microsoft.Online.SharePoint.PowerShell (OneDrive)
+#>
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+#region Config  ---------------------------------------------------------------
+
+$Domain              = "@expresspros.com"
+$MySiteBase          = "https://expresspros-my.sharepoint.com/personal"
+$CompletedTaskFolder = "E:\Scripts\M365\Logs\Completed"
+$CompletedTaskFile   = Join-Path $CompletedTaskFolder "CompletedTasks.csv"
+
+#endregion
+
+#region Helpers  --------------------------------------------------------------
+
+function Get-AddressList {
+    param([string]$Raw)
+    if ([string]::IsNullOrWhiteSpace($Raw)) { return @() }
+    $tokens = $Raw -split "[\r\n,;]+"
+    $clean = foreach ($t in $tokens) {
+        $name = $t.Trim()
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if ($name -notmatch '@') { $name = $name + $Domain }
+        $name
+    }
+    return @($clean | Sort-Object -Unique)
+}
+
+function Get-OneDriveUrl {
+    param([string]$Email)
+    $localPart = ($Email -split '@')[0]
+    $urlSafe   = $localPart -replace '\.', '_'
+    return "$MySiteBase/${urlSafe}_expresspros_com"
+}
+
+function Write-CompletedLog {
+    param([string]$Task)
+    if (-not (Test-Path -LiteralPath $CompletedTaskFolder)) {
+        New-Item -Path $CompletedTaskFolder -ItemType Directory -Force | Out-Null
+    }
+    if (-not (Test-Path -LiteralPath $CompletedTaskFile)) {
+        "Task,DateTime" | Out-File -FilePath $CompletedTaskFile -Encoding utf8
+    }
+    $dt = Get-Date -Format "yyyy-MM-dd HHmm"
+    if ($Task -and $Task.Trim() -ne "") {
+        Add-Content -Path $CompletedTaskFile -Value ('"{0}","{1}"' -f $Task.Trim(), $dt)
+    }
+}
+
+#endregion
+
+#region Access Type mapping  ---------------------------------------------------
+
+# Single source of truth for what each of the five Access Type radio buttons
+# actually does -- both the pre-flight gate (Full -or SendAs) and the
+# per-pair action loop read these same three flags, so there is no separate
+# list anywhere else of "which type does what" that could drift out of sync
+# with the radio buttons themselves.
+function Get-AccessFlags {
+    param([string]$AccessType)   # 'Full' | 'SendAs' | 'OneDrive' | 'FullSendAs' | 'FullOneDrive'
+    switch ($AccessType) {
+        'Full'         { return [PSCustomObject]@{ Full = $true;  SendAs = $false; OneDrive = $false } }
+        'SendAs'       { return [PSCustomObject]@{ Full = $false; SendAs = $true;  OneDrive = $false } }
+        'OneDrive'     { return [PSCustomObject]@{ Full = $false; SendAs = $false; OneDrive = $true  } }
+        'FullSendAs'   { return [PSCustomObject]@{ Full = $true;  SendAs = $true;  OneDrive = $false } }
+        'FullOneDrive' { return [PSCustomObject]@{ Full = $true;  SendAs = $false; OneDrive = $true  } }
+    }
+}
+
+function Get-AccessTypeText {
+    param([string]$AccessType)
+    switch ($AccessType) {
+        'Full'         { return 'Full Access' }
+        'SendAs'       { return 'Send-As' }
+        'OneDrive'     { return 'OneDrive' }
+        'FullSendAs'   { return 'Full Access & Send-As' }
+        'FullOneDrive' { return 'Full Access & OneDrive' }
+    }
+}
+
+#endregion
+
+#region Parsing  --------------------------------------------------------------
+
+function Get-ParsedInputs {
+    param(
+        [string]$MailboxRaw,
+        [string]$UserRaw,
+        [string]$AccessType,
+        [string]$Mode   # 'Grant' | 'Remove'
+    )
+    $mailboxes = Get-AddressList -Raw $MailboxRaw
+    $users     = Get-AddressList -Raw $UserRaw
+
+    # Remove any user that is also listed as a mailbox -- a mailbox granting
+    # itself access (Exchange or OneDrive) never makes sense. Same dedup
+    # Set-MailboxAccess.ps1 originally applied.
+    $users = @($users | Where-Object { $mailboxes -notcontains $_ })
+
+    return [PSCustomObject]@{
+        Mailboxes  = $mailboxes
+        Users      = $users
+        AccessType = $AccessType
+        Mode       = $Mode
+        OpCount    = ($mailboxes.Count * $users.Count)
+    }
+}
+
+#endregion
+
+#region Actions  --------------------------------------------------------------
+
+function Invoke-MailboxOneDriveAccess {
+    param(
+        [string[]]$Mailboxes,
+        [string[]]$Users,
+        [string]$AccessType,
+        [string]$Mode
+    )
+
+    $flags      = Get-AccessFlags -AccessType $AccessType
+    $isGrant    = ($Mode -eq 'Grant')
+    $verb       = if ($isGrant) { 'Granted' } else { 'Removed' }
+    $actionText = "$(if ($isGrant) { 'Grant' } else { 'Remove' }) $(Get-AccessTypeText -AccessType $AccessType)"
+
+    $log = New-Object System.Text.StringBuilder
+
+    [void]$log.AppendLine("=== Mailbox & OneDrive Access Manager ===")
+    [void]$log.AppendLine("Action        : $actionText")
+    [void]$log.AppendLine("Mailbox(es)   : $($Mailboxes -join ', ')")
+    [void]$log.AppendLine("User(s)       : $($Users -join ', ')")
+    [void]$log.AppendLine("")
+
+    # --- Pre-flight: only when Exchange is actually touched -- matches
+    # Set-MailboxAccess.ps1's original behavior. A pure OneDrive run needs
+    # no Exchange Online connection at all, so it skips this entirely,
+    # matching onedriveaccess.ps1's original behavior.
+    if ($flags.Full -or $flags.SendAs) {
+        $notFound = @()
+        foreach ($m in $Mailboxes) {
+            try   { Get-Mailbox -Identity $m -ErrorAction Stop | Out-Null }
+            catch { $notFound += $m }
+        }
+        foreach ($u in $Users) {
+            try   { Get-Mailbox -Identity $u -ErrorAction Stop | Out-Null }
+            catch { $notFound += $u }
+        }
+        if ($notFound.Count -gt 0) {
+            $list = ($notFound | Sort-Object -Unique) -join "`r`n    "
+            [void]$log.AppendLine("PRE-FLIGHT FAILED -- the following could not be resolved:")
+            [void]$log.AppendLine("    $list")
+            [void]$log.AppendLine("")
+            [void]$log.AppendLine("No changes were made. Correct the above entries and try again.")
+            return $log.ToString()
+        }
+        [void]$log.AppendLine("Pre-flight : all identities resolved OK.")
+        [void]$log.AppendLine("")
+    }
+
+    $succeeded = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $failed    = [System.Collections.Generic.List[string]]::new()
+    $skipped   = [System.Collections.Generic.List[string]]::new()
+    # Mailboxes where at least one OneDrive grant succeeded -- drives the
+    # "OneDrive can be accessed" lines prepended to the output below.
+    $oneDriveOkMailboxes = New-Object System.Collections.Generic.List[string]
+
+    foreach ($m in $Mailboxes) {
+
+        # Set MessageCopyForSentAs once per mailbox, any time Send-As is
+        # being granted (standalone or combined) -- see header note. Never
+        # touched on Remove, in any combination.
+        if ($flags.SendAs -and $isGrant) {
+            try {
+                Set-Mailbox -Identity $m -MessageCopyForSentAs $true -ErrorAction Stop
+                [void]$log.AppendLine("  [OK]   MessageCopyForSentAs = true on $m")
+            } catch {
+                [void]$log.AppendLine("  [WARN] Could not set MessageCopyForSentAs on $m : $($_.Exception.Message)")
+            }
+        }
+
+        $siteUrl = $null
+        if ($flags.OneDrive) {
+            $siteUrl = Get-OneDriveUrl -Email $m
+            [void]$log.AppendLine("  OneDrive site for $m : $siteUrl")
+        }
+
+        foreach ($u in $Users) {
+
+            if ($flags.Full) {
+                if ($isGrant) {
+                    try {
+                        Add-MailboxPermission -Identity $m -User $u -AccessRights FullAccess -AutoMapping:$true -ErrorAction Stop | Out-Null
+                        [void]$log.AppendLine("  [OK]   Granted Full Access : $u -> $m")
+                        $succeeded.Add([PSCustomObject]@{ Mailbox = $m; User = $u; Op = 'Full' })
+                    } catch {
+                        [void]$log.AppendLine("  [FAIL] Full Access : $u -> $m : $($_.Exception.Message)")
+                        $failed.Add("Full: $u -> $m")
+                    }
+                } else {
+                    try {
+                        $fa = Get-MailboxPermission -Identity $m -User $u -ErrorAction SilentlyContinue |
+                              Where-Object { $_.AccessRights -contains 'FullAccess' }
+                        if ($fa) {
+                            Remove-MailboxPermission -Identity $m -User $u -AccessRights FullAccess -InheritanceType All -Confirm:$false -ErrorAction Stop | Out-Null
+                            [void]$log.AppendLine("  [OK]   Removed Full Access : $u -> $m")
+                            $succeeded.Add([PSCustomObject]@{ Mailbox = $m; User = $u; Op = 'Full' })
+                        } else {
+                            [void]$log.AppendLine("  [SKIP] No Full Access found : $u -> $m")
+                            $skipped.Add("Full: $u -> $m")
+                        }
+                    } catch {
+                        [void]$log.AppendLine("  [FAIL] Remove Full Access : $u -> $m : $($_.Exception.Message)")
+                        $failed.Add("RemoveFull: $u -> $m")
+                    }
+                }
+            }
+
+            if ($flags.SendAs) {
+                if ($isGrant) {
+                    try {
+                        Add-RecipientPermission -Identity $m -Trustee $u -AccessRights SendAs -Confirm:$false -ErrorAction Stop | Out-Null
+                        [void]$log.AppendLine("  [OK]   Granted Send-As : $u -> $m")
+                        $succeeded.Add([PSCustomObject]@{ Mailbox = $m; User = $u; Op = 'SendAs' })
+                    } catch {
+                        [void]$log.AppendLine("  [FAIL] Send-As : $u -> $m : $($_.Exception.Message)")
+                        $failed.Add("SendAs: $u -> $m")
+                    }
+                } else {
+                    try {
+                        $sa = Get-RecipientPermission -Identity $m -Trustee $u -ErrorAction SilentlyContinue |
+                              Where-Object { $_.AccessRights -contains 'SendAs' }
+                        if ($sa) {
+                            Remove-RecipientPermission -Identity $m -Trustee $u -AccessRights SendAs -Confirm:$false -ErrorAction Stop | Out-Null
+                            [void]$log.AppendLine("  [OK]   Removed Send-As : $u -> $m")
+                            $succeeded.Add([PSCustomObject]@{ Mailbox = $m; User = $u; Op = 'SendAs' })
+                        } else {
+                            [void]$log.AppendLine("  [SKIP] No Send-As found : $u -> $m")
+                            $skipped.Add("SendAs: $u -> $m")
+                        }
+                    } catch {
+                        [void]$log.AppendLine("  [FAIL] Remove Send-As : $u -> $m : $($_.Exception.Message)")
+                        $failed.Add("RemoveSendAs: $u -> $m")
+                    }
+                }
+            }
+
+            if ($flags.OneDrive) {
+                try {
+                    Set-SPOUser -Site $siteUrl -LoginName $u -IsSiteCollectionAdmin $isGrant -ErrorAction Stop | Out-Null
+                    [void]$log.AppendLine("  [OK]   $verb OneDrive admin : $u -> $m")
+                    $succeeded.Add([PSCustomObject]@{ Mailbox = $m; User = $u; Op = 'OneDrive' })
+                    if ($isGrant -and -not $oneDriveOkMailboxes.Contains($m)) {
+                        $oneDriveOkMailboxes.Add($m)
+                    }
+                } catch {
+                    [void]$log.AppendLine("  [FAIL] OneDrive admin : $u -> $m : $($_.Exception.Message)")
+                    $failed.Add("OneDrive: $u -> $m")
+                }
+            }
+        }
+    }
+
+    [void]$log.AppendLine("")
+    [void]$log.AppendLine(("Summary : {0} succeeded, {1} failed, {2} with nothing to do." -f `
+        $succeeded.Count, $failed.Count, $skipped.Count))
+
+    # --- Verification ---
+    [void]$log.AppendLine("")
+    [void]$log.AppendLine("=== Verification ===")
+    foreach ($m in $Mailboxes) {
+        [void]$log.AppendLine("")
+        if ($flags.Full) {
+            [void]$log.AppendLine("Full Access on $m :")
+            try {
+                $faList = Get-MailboxPermission -Identity $m -ErrorAction Stop |
+                          Where-Object { $_.User -notlike 'NT AUTHORITY\*' -and $_.User -notlike 'S-1-5-*' }
+                if ($faList) {
+                    foreach ($p in $faList) { [void]$log.AppendLine("    $($p.User)  :  $($p.AccessRights -join ', ')") }
+                } else {
+                    [void]$log.AppendLine("    (none)")
+                }
+            } catch {
+                [void]$log.AppendLine("    (error: $($_.Exception.Message))")
+            }
+        }
+        if ($flags.SendAs) {
+            [void]$log.AppendLine("Send-As on $m :")
+            try {
+                $saList = Get-RecipientPermission -Identity $m -ErrorAction Stop |
+                          Where-Object { $_.Trustee -notlike 'NT AUTHORITY\*' }
+                if ($saList) {
+                    foreach ($p in $saList) { [void]$log.AppendLine("    $($p.Trustee)  :  $($p.AccessRights -join ', ')") }
+                } else {
+                    [void]$log.AppendLine("    (none)")
+                }
+            } catch {
+                [void]$log.AppendLine("    (error: $($_.Exception.Message))")
+            }
+        }
+        if ($flags.OneDrive) {
+            $verifySiteUrl = Get-OneDriveUrl -Email $m
+            [void]$log.AppendLine("OneDrive site collection admins on $m ($verifySiteUrl) :")
+            try {
+                $admins = Get-SPOUser -Site $verifySiteUrl -ErrorAction Stop | Where-Object { $_.IsSiteCollectionAdmin -eq $true }
+                if ($admins) {
+                    foreach ($a in $admins) { [void]$log.AppendLine("    $($a.LoginName)") }
+                } else {
+                    [void]$log.AppendLine("    (none)")
+                }
+            } catch {
+                [void]$log.AppendLine("    (error reading admins: $($_.Exception.Message))")
+            }
+        }
+    }
+
+    # --- Logging: one row per mailbox (target object), per Section 21 ---
+    if ($succeeded.Count -gt 0) {
+        $userList = $Users -join '+'
+        foreach ($m in $Mailboxes) {
+            $mSuccess = @($succeeded | Where-Object { $_.Mailbox -eq $m })
+            if ($mSuccess.Count -gt 0) {
+                Write-CompletedLog -Task "$verb MailboxOneDriveAccess [$actionText] $m (users: $userList)"
+            }
+        }
+    }
+
+    # --- ADDED 2026-07-24: OneDrive link, prepended as the very first
+    # line(s) of the output -- see header ADDED note. Built last, then
+    # stitched in front of everything above.
+    if ($oneDriveOkMailboxes.Count -gt 0) {
+        $linkLines = New-Object System.Text.StringBuilder
+        foreach ($m in $oneDriveOkMailboxes) {
+            [void]$linkLines.AppendLine("OneDrive can be accessed via the following link: $(Get-OneDriveUrl -Email $m)")
+        }
+        [void]$linkLines.AppendLine("")
+        return $linkLines.ToString() + $log.ToString()
+    }
+
+    return $log.ToString()
+}
+
+#endregion
+
+#region WinForms UI  ------------------------------------------------------------
+
+# Shared state between Parse and Run
+$script:Parsed     = $null
+$script:ParsedFrom = $null
+
+# --- Form ---
+$form = New-Object System.Windows.Forms.Form
+$form.Text            = "Mailbox & OneDrive Access Manager"
+$form.Size            = New-Object System.Drawing.Size(780, 890)
+$form.StartPosition   = "CenterScreen"
+$form.FormBorderStyle = "FixedDialog"
+$form.MaximizeBox     = $false
+$form.Font            = New-Object System.Drawing.Font("Segoe UI", 9)
+
+# --- Warning label (Section 4) -- text is dynamic, see Update-ConnectionWarning
+# below: it updates with the Access Type selection to name exactly which
+# connection(s) (Exchange Online and/or SharePoint Online) that choice needs.
+$lblWarn           = New-Object System.Windows.Forms.Label
+$lblWarn.Location  = New-Object System.Drawing.Point(12, 10)
+$lblWarn.Size      = New-Object System.Drawing.Size(740, 32)
+$lblWarn.Font      = New-Object System.Drawing.Font("Microsoft Sans Serif", 9, [System.Drawing.FontStyle]::Bold)
+$lblWarn.ForeColor = [System.Drawing.Color]::Red
+$form.Controls.Add($lblWarn)
+
+# --- Mailbox label + box ---
+$lblMailbox          = New-Object System.Windows.Forms.Label
+$lblMailbox.Text     = "Mailbox(es) -- one per line (enter email address, @expresspros.com optional):"
+$lblMailbox.AutoSize = $true
+$lblMailbox.Location = New-Object System.Drawing.Point(12, 50)
+$form.Controls.Add($lblMailbox)
+
+$txtMailbox               = New-Object System.Windows.Forms.TextBox
+$txtMailbox.Multiline     = $true
+$txtMailbox.ScrollBars    = "Vertical"
+$txtMailbox.Size          = New-Object System.Drawing.Size(740, 100)
+$txtMailbox.Location      = New-Object System.Drawing.Point(12, 70)
+$txtMailbox.Font          = New-Object System.Drawing.Font("Consolas", 9)
+$txtMailbox.AcceptsReturn = $true   # Enter adds newline; does not trigger any button
+$form.Controls.Add($txtMailbox)
+
+# --- User/Manager label + box ---
+$lblUser          = New-Object System.Windows.Forms.Label
+$lblUser.Text     = "User(s)/Manager(s) to grant/remove access -- one per line (enter email address, @expresspros.com optional):"
+$lblUser.AutoSize = $true
+$lblUser.Location = New-Object System.Drawing.Point(12, 178)
+$form.Controls.Add($lblUser)
+
+$txtUser               = New-Object System.Windows.Forms.TextBox
+$txtUser.Multiline     = $true
+$txtUser.ScrollBars    = "Vertical"
+$txtUser.Size          = New-Object System.Drawing.Size(740, 100)
+$txtUser.Location      = New-Object System.Drawing.Point(12, 198)
+$txtUser.Font          = New-Object System.Drawing.Font("Consolas", 9)
+$txtUser.AcceptsReturn = $true   # Enter adds newline; does not trigger any button
+$form.Controls.Add($txtUser)
+
+# --- Parsed preview label + box ---
+$lblParsed          = New-Object System.Windows.Forms.Label
+$lblParsed.Text     = "Parsed preview -- review before clicking Run:"
+$lblParsed.AutoSize = $true
+$lblParsed.Location = New-Object System.Drawing.Point(12, 306)
+$form.Controls.Add($lblParsed)
+
+$txtParsed              = New-Object System.Windows.Forms.TextBox
+$txtParsed.Multiline    = $true
+$txtParsed.ScrollBars   = "Vertical"
+$txtParsed.ReadOnly     = $true
+$txtParsed.BackColor    = [System.Drawing.Color]::WhiteSmoke
+$txtParsed.Size         = New-Object System.Drawing.Size(740, 75)
+$txtParsed.Location     = New-Object System.Drawing.Point(12, 326)
+$txtParsed.Font         = New-Object System.Drawing.Font("Consolas", 9)
+$form.Controls.Add($txtParsed)
+
+# --- Mode group: Grant / Remove ---
+$grpMode          = New-Object System.Windows.Forms.GroupBox
+$grpMode.Text     = "Mode"
+$grpMode.Size     = New-Object System.Drawing.Size(740, 50)
+$grpMode.Location = New-Object System.Drawing.Point(12, 409)
+$form.Controls.Add($grpMode)
+
+$rbGrant          = New-Object System.Windows.Forms.RadioButton
+$rbGrant.Text     = "Grant"
+$rbGrant.AutoSize = $true
+$rbGrant.Location = New-Object System.Drawing.Point(15, 20)
+$rbGrant.Checked  = $true
+$grpMode.Controls.Add($rbGrant)
+
+$rbRemoveMode          = New-Object System.Windows.Forms.RadioButton
+$rbRemoveMode.Text     = "Remove"
+$rbRemoveMode.AutoSize = $true
+$rbRemoveMode.Location = New-Object System.Drawing.Point(150, 20)
+$grpMode.Controls.Add($rbRemoveMode)
+
+# --- Access Type group: the five mutually exclusive options -- see header
+# DESIGN NOTE for why these are RadioButtons, not checkboxes, and why
+# Send-As + OneDrive is not one of the five (structurally impossible to
+# select, not merely validated against).
+$grpAccessType          = New-Object System.Windows.Forms.GroupBox
+$grpAccessType.Text     = "Access Type"
+$grpAccessType.Size     = New-Object System.Drawing.Size(740, 170)
+$grpAccessType.Location = New-Object System.Drawing.Point(12, 467)
+$form.Controls.Add($grpAccessType)
+
+$rbFull          = New-Object System.Windows.Forms.RadioButton
+$rbFull.Text     = "Full Access"
+$rbFull.AutoSize = $true
+$rbFull.Location = New-Object System.Drawing.Point(15, 25)
+$rbFull.Checked  = $true
+$grpAccessType.Controls.Add($rbFull)
+
+$rbSendAs          = New-Object System.Windows.Forms.RadioButton
+$rbSendAs.Text     = "Send-As"
+$rbSendAs.AutoSize = $true
+$rbSendAs.Location = New-Object System.Drawing.Point(15, 52)
+$grpAccessType.Controls.Add($rbSendAs)
+
+$rbOneDrive          = New-Object System.Windows.Forms.RadioButton
+$rbOneDrive.Text     = "OneDrive"
+$rbOneDrive.AutoSize = $true
+$rbOneDrive.Location = New-Object System.Drawing.Point(15, 79)
+$grpAccessType.Controls.Add($rbOneDrive)
+
+$rbFullSendAs          = New-Object System.Windows.Forms.RadioButton
+$rbFullSendAs.Text     = "Full Access && Send-As"
+$rbFullSendAs.AutoSize = $true
+$rbFullSendAs.Location = New-Object System.Drawing.Point(15, 106)
+$grpAccessType.Controls.Add($rbFullSendAs)
+
+$rbFullOneDrive          = New-Object System.Windows.Forms.RadioButton
+$rbFullOneDrive.Text     = "Full Access && OneDrive"
+$rbFullOneDrive.AutoSize = $true
+$rbFullOneDrive.Location = New-Object System.Drawing.Point(15, 133)
+$grpAccessType.Controls.Add($rbFullOneDrive)
+
+# --- Buttons: Parse / Run / Close (right-aligned) ---
+$btnParse          = New-Object System.Windows.Forms.Button
+$btnParse.Text     = "Parse"
+$btnParse.Size     = New-Object System.Drawing.Size(80, 28)
+$btnParse.Location = New-Object System.Drawing.Point(482, 649)
+$form.Controls.Add($btnParse)
+
+$btnRun          = New-Object System.Windows.Forms.Button
+$btnRun.Text     = "Run"
+$btnRun.Size     = New-Object System.Drawing.Size(80, 28)
+$btnRun.Location = New-Object System.Drawing.Point(570, 649)
+$form.Controls.Add($btnRun)
+
+$btnClose          = New-Object System.Windows.Forms.Button
+$btnClose.Text     = "Close"
+$btnClose.Size     = New-Object System.Drawing.Size(84, 28)
+$btnClose.Location = New-Object System.Drawing.Point(658, 649)
+$form.Controls.Add($btnClose)
+
+# No AcceptButton set -- pressing Enter in the multiline boxes adds a
+# newline, not trigger Run. Clicking Run is the only way to execute.
+
+# --- Result label + box ---
+$lblResult          = New-Object System.Windows.Forms.Label
+$lblResult.Text     = "Result:"
+$lblResult.AutoSize = $true
+$lblResult.Location = New-Object System.Drawing.Point(12, 687)
+$form.Controls.Add($lblResult)
+
+$txtOut            = New-Object System.Windows.Forms.TextBox
+$txtOut.Multiline  = $true
+$txtOut.ScrollBars = "Vertical"
+$txtOut.ReadOnly   = $true
+$txtOut.Size       = New-Object System.Drawing.Size(740, 150)
+$txtOut.Location   = New-Object System.Drawing.Point(12, 707)
+$txtOut.Font       = New-Object System.Drawing.Font("Consolas", 9)
+$form.Controls.Add($txtOut)
+
+# --- Helpers: return selected Access Type / Mode strings ---
+function Get-SelectedAccessType {
+    if ($rbFull.Checked)         { return 'Full' }
+    if ($rbSendAs.Checked)       { return 'SendAs' }
+    if ($rbOneDrive.Checked)     { return 'OneDrive' }
+    if ($rbFullSendAs.Checked)   { return 'FullSendAs' }
+    if ($rbFullOneDrive.Checked) { return 'FullOneDrive' }
+}
+function Get-SelectedMode {
+    if ($rbRemoveMode.Checked) { return 'Remove' }
+    return 'Grant'
+}
+
+# --- Dynamic warning label -- names exactly which connection(s) the
+# currently selected Access Type needs, instead of a generic "connect
+# before running" that doesn't distinguish EXO-only, SPO-only, and
+# EXO+SPO selections.
+function Update-ConnectionWarning {
+    $accessType = Get-SelectedAccessType
+    $flags = Get-AccessFlags -AccessType $accessType
+    $parts = @()
+    if ($flags.Full -or $flags.SendAs) { $parts += 'Exchange Online' }
+    if ($flags.OneDrive)               { $parts += 'SharePoint Online' }
+    $lblWarn.Text = "Make sure you are connected to $($parts -join ' and ') before running."
+}
+$rbFull.Add_CheckedChanged({ Update-ConnectionWarning })
+$rbSendAs.Add_CheckedChanged({ Update-ConnectionWarning })
+$rbOneDrive.Add_CheckedChanged({ Update-ConnectionWarning })
+$rbFullSendAs.Add_CheckedChanged({ Update-ConnectionWarning })
+$rbFullOneDrive.Add_CheckedChanged({ Update-ConnectionWarning })
+Update-ConnectionWarning
+
+# --- Helper: populate the parsed preview box ---
+function Update-ParsedPreview {
+    param($Parsed)
+    $modeText   = if ($Parsed.Mode -eq 'Remove') { 'Remove' } else { 'Grant' }
+    $accessText = Get-AccessTypeText -AccessType $Parsed.AccessType
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("Mode   : $modeText")
+    $lines.Add("Access : $accessText")
+    $lines.Add("Mailboxes ($($Parsed.Mailboxes.Count)) : $($Parsed.Mailboxes -join ', ')")
+    $lines.Add("Users/Managers ($($Parsed.Users.Count)) : $($Parsed.Users -join ', ')")
+    $lines.Add("Total operations : $($Parsed.OpCount)")
+
+    $txtParsed.Lines = $lines.ToArray()
+}
+
+# --- Parse button: show preview without executing ---
+$btnParse.Add_Click({
+    $btnParse.Enabled = $false
+    $btnRun.Enabled   = $false
+    try {
+        $accessType = Get-SelectedAccessType
+        $mode       = Get-SelectedMode
+        $p          = Get-ParsedInputs -MailboxRaw $txtMailbox.Text -UserRaw $txtUser.Text -AccessType $accessType -Mode $mode
+
+        if ($p.Mailboxes.Count -lt 1) {
+            $txtOut.Text = "Please enter at least one mailbox."
+            return
+        }
+        if ($p.Users.Count -lt 1) {
+            $txtOut.Text = "Please enter at least one user/manager. (If entries were removed due to mailbox overlap, re-check your entries.)"
+            return
+        }
+
+        $script:Parsed     = $p
+        $script:ParsedFrom = $txtMailbox.Text + "|" + $txtUser.Text + "|" + $accessType + "|" + $mode
+
+        Update-ParsedPreview -Parsed $p
+        $txtOut.Text = "Parsed OK. Review the preview above, then click Run to proceed."
+    } catch {
+        $txtOut.Text = "Parse error: $($_.Exception.Message)"
+    } finally {
+        $btnParse.Enabled = $true
+        $btnRun.Enabled   = $true
+    }
+})
+
+# --- Run button: auto-parses if stale, confirms, then executes ---
+$btnRun.Add_Click({
+    $btnRun.Enabled   = $false
+    $btnParse.Enabled = $false
+    try {
+        $accessType = Get-SelectedAccessType
+        $mode       = Get-SelectedMode
+        $stateKey   = $txtMailbox.Text + "|" + $txtUser.Text + "|" + $accessType + "|" + $mode
+
+        # Silently re-parse if input changed since last Parse click
+        if (-not $script:Parsed -or $stateKey -ne $script:ParsedFrom) {
+            $script:Parsed     = Get-ParsedInputs -MailboxRaw $txtMailbox.Text -UserRaw $txtUser.Text -AccessType $accessType -Mode $mode
+            $script:ParsedFrom = $stateKey
+            Update-ParsedPreview -Parsed $script:Parsed
+        }
+
+        $p = $script:Parsed
+
+        if ($p.Mailboxes.Count -lt 1) {
+            $txtOut.Text = "Please enter at least one mailbox."
+            return
+        }
+        if ($p.Users.Count -lt 1) {
+            $txtOut.Text = "Please enter at least one user/manager. (If entries were removed due to mailbox overlap, re-check your entries.)"
+            return
+        }
+
+        $modeText   = if ($mode -eq 'Remove') { 'Remove' } else { 'Grant' }
+        $accessText = Get-AccessTypeText -AccessType $accessType
+        $mbList     = ($p.Mailboxes | ForEach-Object { "  $_" }) -join "`r`n"
+        $usrList    = ($p.Users     | ForEach-Object { "  $_" }) -join "`r`n"
+
+        $confirmMsg = ("Mode: {0}`r`nAccess: {1}`r`n`r`nMailbox(es) ({2}):`r`n{3}`r`n`r`nUser(s)/Manager(s) ({4}):`r`n{5}`r`n`r`nTotal operations: {6}`r`n`r`nProceed?" -f `
+            $modeText, $accessText, $p.Mailboxes.Count, $mbList, $p.Users.Count, $usrList, $p.OpCount)
+
+        $confirm = [System.Windows.Forms.MessageBox]::Show(
+            $confirmMsg,
+            "Confirm Action",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Question)
+
+        if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
+            $txtOut.Text = "Cancelled."
+            return
+        }
+
+        $txtOut.Text = "Running -- please wait..."
+        $form.Refresh()
+
+        $result      = Invoke-MailboxOneDriveAccess -Mailboxes $p.Mailboxes -Users $p.Users -AccessType $p.AccessType -Mode $p.Mode
+        $txtOut.Text = $result
+
+    } catch {
+        $txtOut.Text = "ERROR: $($_.Exception.Message)"
+    } finally {
+        $btnRun.Enabled   = $true
+        $btnParse.Enabled = $true
+    }
+})
+
+# --- Close button ---
+$btnClose.Add_Click({ $form.Close() })
+
+# ADDED 2026-07-24 -- open bottom-left, so a tool never covers the Admin
+# Console (which opens top-left). Done inline rather than via Common.ps1's
+# Set-FormScreenCorner because this tool is deliberately standalone and does
+# not dot-source Common.ps1 -- see the header. WorkingArea (not Bounds) so the
+# taskbar is respected, and clamped so an over-tall form can't lose its title
+# bar off the top of the screen.
+try {
+    $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $y  = $wa.Bottom - $form.Height
+    if ($y -lt $wa.Top) { $y = $wa.Top }
+    $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+    $form.Location = New-Object System.Drawing.Point($wa.Left, $y)
+} catch {
+    $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+}
+
+[void]$form.ShowDialog()
+
+#endregion

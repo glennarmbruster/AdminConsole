@@ -1,0 +1,13 @@
+DLCloudMigration, first attempt -- retired 2026-08-13, superseded before use.
+
+1-Export-Groups.ps1 / 2-Export-Usage.ps1 / 3-Assess-PilotCandidates.ps1
+
+Written 2026-08-08 as a data-gathering pass for moving distribution groups to
+the cloud. Never run in anger. The project restarted from scratch a week later
+with a different shape: phased by DIRECTORY (HQ first, Franchise later) and by
+GROUP TYPE (plain distribution groups first, dynamic and mail-enabled security
+deferred), rather than one export covering everything at once.
+
+Kept because 2-Export-Usage's approach to delivery evidence -- counting what
+actually arrived rather than trusting that a group is in use -- is worth
+re-reading when the new project reaches the retire-vs-migrate decision.

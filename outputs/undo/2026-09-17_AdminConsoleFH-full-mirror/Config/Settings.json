@@ -1,0 +1,16 @@
+﻿{
+  "ReportsPath": "",
+  "LogPath": "",
+  "RetryQueuePath": "",
+  "OperatorEmail": "",
+  "ConsoleTitle": "First Horizon Admin Console",
+  "ConsoleTitleFont": "",
+  "ConsoleButtonStyle": "Raised",
+  "ConsoleIcons": "",
+  "ConsoleCorners": "Rounded",
+  "ConsoleDialogStyle": "",
+  "BrowserProfiles": {
+    "Admin": "",
+    "Standard": ""
+  }
+}

@@ -1,0 +1,235 @@
+﻿[
+  {
+    "Order": 1,
+    "Name": "Group Editor",
+    "Script": ".\\GroupEditor.ps1",
+    "ObjectTypes": [
+      "UnifiedGroup",
+      "OnpremGroup"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 2,
+    "Name": "Mailbox Health",
+    "Script": ".\\MailboxHealth.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 3,
+    "Name": "Message Trace",
+    "Script": ".\\MessageTrace.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 4,
+    "Name": "Inbox Rules",
+    "Script": ".\\InboxRules.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 5,
+    "Name": "Calendar Permissions",
+    "Script": ".\\CalendarPermissions.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 6,
+    "Name": "Out of Office",
+    "Script": ".\\OOFEditor.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 7,
+    "Name": "DL Memberships",
+    "Script": ".\\DLMemberships.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 8,
+    "Name": "UnifiedGroup Editor",
+    "Script": ".\\UnifiedGroup.ps1",
+    "ObjectTypes": [
+      "UnifiedGroup"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 9,
+    "Name": "Mailbox Permissions",
+    "Script": ".\\MailboxPermissions.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 10,
+    "Name": "Mail Attributes",
+    "Script": ".\\MailAttributes.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 11,
+    "Name": "All Attributes",
+    "Script": ".\\AllAttributes.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 12,
+    "Name": "Mailbox Audit",
+    "Script": ".\\AuditUser.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 13,
+    "Name": "Shared Mailbox Audit",
+    "Script": ".\\AuditSMB.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 14,
+    "Name": "DL Permissions",
+    "Script": ".\\DL_SendToAs.ps1",
+    "ObjectTypes": [
+      "Mailbox",
+      "UnifiedGroup",
+      "OnpremGroup"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 15,
+    "Name": "Mailbox / OneDrive Perms",
+    "Script": ".\\MailboxOneDriveAccess.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 16,
+    "Name": "PowerShell Console",
+    "Script": ".\\console.ps1",
+    "ObjectTypes": [],
+    "Section": "Admin Tools",
+    "Tier": ""
+  },
+  {
+    "Order": 17,
+    "Name": "Protocols",
+    "Script": ".\\Protocols.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": ""
+  },
+  {
+    "Order": 18,
+    "Name": "DL Inventory",
+    "Script": ".\\DLInventory.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": ""
+  },
+  {
+    "Order": 19,
+    "Name": "External Forwarding",
+    "Script": ".\\ExternalForwarding.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": ""
+  },
+  {
+    "Order": 20,
+    "Name": "Permissions Audit",
+    "Script": ".\\PermissionsAudit.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": ""
+  },
+  {
+    "Order": 21,
+    "Name": "Ownerless Groups",
+    "Script": ".\\OwnerlessGroups.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": ""
+  },
+  {
+    "Order": 22,
+    "Name": "Orphaned OneDrive",
+    "Script": ".\\OrphanedOneDrive.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": ""
+  },
+  {
+    "Order": 23,
+    "Name": "External Sharing",
+    "Script": ".\\ExternalSharing.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": ""
+  },
+  {
+    "Order": 24,
+    "Name": "M365 Portal Reports",
+    "Script": ".\\M365Reports.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": ""
+  },
+  {
+    "Order": 25,
+    "Name": "Report Browser",
+    "Script": ".\\ReportBrowser.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": ""
+  }
+]

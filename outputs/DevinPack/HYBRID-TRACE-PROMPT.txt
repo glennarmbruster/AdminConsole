@@ -1,0 +1,279 @@
+================================================================================
+ANSWER THE EIGHT QUESTIONS FIRST, THEN PASTE THE WHOLE THING INTO DEVIN.
+Every question has a recommended default. "Defaults except 3 and 5" is a
+complete answer.
+================================================================================
+
+  1. EXTEND OR NEW FILE?
+     DEFAULT: extend MessageTrace.ps1 in place. One button, with a source
+     selector in the form. Two buttons that both say "message trace" is the
+     confusion this toolkit exists to avoid.
+     YOUR ANSWER: ______________________________________________
+
+  2. HOW ARE TRANSPORT SERVERS FOUND?
+     DEFAULT: Get-TransportService at run time, cached for the session.
+     ALTERNATIVE: a list in Tenant.json, if discovery is slow or returns
+     servers you do not want queried.
+     HOW MANY DO YOU HAVE? ______________________________________
+     YOUR ANSWER: ______________________________________________
+
+  3. ARE THERE EDGE TRANSPORT SERVERS?
+     They keep their own tracking logs and are usually NOT reachable from a
+     normal EMS session. If yes, they are out of scope for this build and the
+     tool should say so rather than silently omitting a hop.
+     YOUR ANSWER: yes / no ______________________________________
+
+  4. LOG RETENTION — what is MessageTrackingLogMaxAge on those servers?
+     DEFAULT ASSUMPTION: 30 days. This sets the sensible maximum on the date
+     picker and is worth stating in the UI, because it is usually LONGER than
+     Exchange Online's detailed window and that is a feature.
+     Check with:  Get-TransportService | fl Name,MessageTrackingLogMaxAge
+     YOUR ANSWER: ______________________________________________
+
+  5. DOES YOUR ADMIN ACCOUNT HAVE MESSAGE TRACKING RIGHTS?
+     Needs a role with the Message Tracking role assigned — Organization
+     Management or Records Management typically. If it is PIM-eligible rather
+     than standing, name the role so the tool's error message can say which one
+     to activate instead of "access denied".
+     YOUR ANSWER: ______________________________________________
+
+  6. DEFAULT SOURCE ON OPEN?
+     DEFAULT: Exchange Online only, with an "include on-premises" checkbox that
+     is OFF by default. On-prem fan-out is the slow half and you will usually
+     know when you need it.
+     YOUR ANSWER: ______________________________________________
+
+  7. DISPLAY SHAPE?
+     DEFAULT (recommended): one flat grid, one row per message-per-recipient-
+     per-system, sorted by time, with a Source column and a derived Outcome
+     column. THEN double-click any row to open a hop timeline for that
+     MessageId across BOTH systems. That gives you the familiar flat view and
+     the correlation, without making you choose a mode up front.
+     YOUR ANSWER: ______________________________________________
+
+  8. ANYTHING IN THE EXISTING MESSAGE TRACE YOU WANT CHANGED WHILE IT IS OPEN?
+     It currently has: status filter, timezone dropdown, filter-results-without-
+     re-running, export, quarantine release. All of that must survive.
+     YOUR ANSWER: ______________________________________________
+
+================================================================================
+PASTE FROM HERE
+================================================================================
+
+Build a HYBRID message trace: one search box that queries Exchange Online AND
+on-premises Exchange together, and shows the result as one correlated view.
+
+This is the highest-value tool in the toolkit for a hybrid tenant, because in
+hybrid a message crosses both systems and today answering "where did it go"
+means running two tools with two different vocabularies and stitching the answer
+together by hand.
+
+Read reference/MessageTrace.ps1 first. It is the exemplar and most of the UI
+already exists. You are adding a second source behind an interface that works.
+
+--------------------------------------------------------------------------------
+THE TWO CMDLETS
+--------------------------------------------------------------------------------
+
+  Exchange Online   Get-MessageTrace          (already used by the tool)
+  On-premises       Get-MessageTrackingLog    (new)
+
+VERIFY Get-MessageTrackingLog AGAINST MICROSOFT LEARN BEFORE WRITING ANY CALL --
+parameter names, accepted -EventId values, and -ResultSize behaviour. Record the
+citation at the call site as "# Learn <date>: ..." per the build prompt. Do not
+write plausible code for this one; it is the whole tool.
+
+Parameters you will need: -Server, -Start, -End, -Sender, -Recipients,
+-MessageSubject, -MessageId, -EventId, -ResultSize.
+
+--------------------------------------------------------------------------------
+THE FOUR THINGS THAT MAKE THIS HARD
+--------------------------------------------------------------------------------
+
+1. GET-MESSAGETRACKINGLOG IS PER-SERVER. THERE IS NO ORG-WIDE VIEW.
+
+   You must enumerate transport servers and query each one, then merge.
+
+   PARTIAL RESULTS ARE THE MAIN CORRECTNESS RISK. If one server is unreachable
+   and you return fewer rows without saying so, you have built a tool that lies
+   quietly -- and the operator concludes the message never existed.
+
+   Required: a visible line above the grid reading "3 of 4 servers answered"
+   with the failed server named, and the same fact recorded in the audit row as
+   Result = Partial. Never Success.
+
+2. ON-PREM RETURNS EVENTS; EXCHANGE ONLINE RETURNS A STATUS.
+
+   THIS IS THE ONE THAT WILL MAKE A NAIVE BUILD LOOK BROKEN.
+
+   One message produces SEVERAL on-prem rows -- RECEIVE, then SEND, then
+   DELIVER -- while Get-MessageTrace returns ONE row per recipient with a final
+   status. Merge them naively and every on-premises message appears three or
+   four times in the grid and reads as a duplication bug.
+
+   Fix: group on-prem rows by MessageId + recipient and derive a single Outcome
+   for the flat grid, keeping the individual events for the timeline view.
+
+   Suggested EventId -> Outcome mapping (confirm the full set against Learn):
+
+       DELIVER            Delivered
+       SEND               Relayed        (handed to another host, incl. the cloud)
+       FAIL               Failed
+       DEFER              Pending
+       DSN                Bounced
+       DROP / POISON      Dropped
+       EXPAND             Expanded       (distribution list)
+       RECEIVE / SUBMIT   (hop detail; not an outcome on its own)
+
+3. Recipients IS AN ARRAY ON-PREM AND A SCALAR IN EXCHANGE ONLINE.
+
+   One on-prem row can carry many recipients. Fan it out to one row per
+   recipient before merging, or every count in the grid is wrong.
+
+4. MessageId IS THE JOIN KEY, AND IT IS THE ENTIRE POINT.
+
+   It survives the hybrid hop, which is what lets you show one message crossing
+   both systems. Normalise before comparing: strip or add the angle brackets
+   consistently and lowercase. On-premises keeps <...>; Exchange Online is not
+   always consistent.
+
+--------------------------------------------------------------------------------
+THE NORMALISED ROW
+--------------------------------------------------------------------------------
+
+Both sources must produce the SAME object shape before anything is displayed.
+Write two functions returning identical shapes, then merge and sort:
+
+    Get-ExoTraceRows     -> normalised rows
+    Get-OnPremTraceRows  -> normalised rows
+
+Field mapping:
+
+    Normalised     Exchange Online          On-premises
+    -----------    ----------------------   ------------------------------
+    Timestamp      Received (UTC)           Timestamp
+    Sender         SenderAddress            Sender
+    Recipient      RecipientAddress         Recipients  (FAN OUT)
+    Subject        Subject                  MessageSubject
+    Outcome        Status                   derived from EventId (see above)
+    MessageId      MessageId                MessageId   (NORMALISE)
+    SizeBytes      Size                     TotalBytes
+    Source         'Exchange Online'        'On-premises'
+    Server         (blank)                  ServerHostname
+    RawEvent       (blank)                  EventId
+    Detail         (blank)                  SourceContext / EventData
+
+Sort the merged set by Timestamp. Convert both to the timezone the existing
+dropdown selects -- Exchange Online returns UTC, on-premises log timestamps are
+server-local, so DO NOT assume they are already comparable.
+
+--------------------------------------------------------------------------------
+THE UI
+--------------------------------------------------------------------------------
+
+Keep everything MessageTrace.ps1 already does: status filter, timezone dropdown,
+filter-results-without-re-running, export, quarantine release. Nothing below
+replaces any of it.
+
+Add:
+
+  * A source control: "Exchange Online" / "On-premises" / "Both".
+    Default to Exchange Online only. On-prem fan-out is the slow half.
+
+  * The partial-results line described above, above the grid.
+
+  * A Source column in the grid, and a Server column that is populated only for
+    on-premises rows.
+
+  * DOUBLE-CLICK A ROW -> a hop timeline for that MessageId across BOTH systems,
+    oldest first, showing every on-prem event and the Exchange Online status.
+    This is the payoff. It is the view that answers "where did it actually go"
+    in one glance, and neither system can produce it alone.
+
+CAPABILITY GATING. If the on-premises Exchange Management Shell is not
+available, the tool must still work EXACTLY as it does today -- Exchange Online
+only, with the on-premises option greyed and a tooltip saying which connection
+is missing. Do not make the existing tool depend on the new half.
+
+--------------------------------------------------------------------------------
+CONSTRAINTS THAT APPLY
+--------------------------------------------------------------------------------
+
+  C1/C2  This tool loads BOTH environments in one process, which is normally the
+         dangerous configuration. It is allowable HERE because the two cmdlets
+         have no counterpart in the other edition -- there is no name to
+         collide. Route the calls through Invoke-EXOCommand and
+         Invoke-OnPremCommand anyway, so the intent is explicit and the tool
+         stays safe if it ever gains another cmdlet. THIS TOOL READS ONLY. It
+         must never gain a write.
+
+  C3     ResultSize explicitly on every enumerating call, both sides.
+
+  C13    Ask the cmdlet what it declares before using a parameter. Message
+         tracking parameter surfaces differ between Exchange versions.
+
+  C15    Shape the query; never retry an oversized one. A wide date range across
+         several servers is the case that fails. Slice by server, and by day if
+         a single server's range is too large.
+
+  B1     Every handler wrapped.
+  B6     Word wrap on the output box.
+  D6     Output honesty. See partial results above. This is the rule that
+         matters most in this tool.
+
+  Audit  One row per search. Target is the search term -- the sender or
+         recipient address if there is one, otherwise 'Message Trace'. Use
+         Get-LogTarget. Result is Success, or Partial when any server failed.
+
+--------------------------------------------------------------------------------
+PERFORMANCE
+--------------------------------------------------------------------------------
+
+Query servers SEQUENTIALLY with a progress label naming the server currently
+being queried. Do not reach for runspaces or jobs -- PowerShell 5.1 parallelism
+costs more complexity than it saves at this scale, and a visible sequential
+progress line is better operator feedback than a silent fast one.
+
+Apply a per-server timeout so one dead server cannot hang the whole search, and
+report that server as failed rather than waiting.
+
+--------------------------------------------------------------------------------
+DONE WHEN
+--------------------------------------------------------------------------------
+
+  [ ] A message sent from an on-premises mailbox to a cloud mailbox appears
+      ONCE per recipient in the flat grid, with a sensible Outcome -- not three
+      times.
+
+  [ ] Double-clicking it shows the hops in order across both systems.
+
+  [ ] Killing one transport server's availability produces "n of m servers
+      answered", names it, and writes Result = Partial to the audit log.
+
+  [ ] With no on-premises connection, the tool behaves exactly as it did before
+      this change and says why the option is unavailable.
+
+  [ ] Timestamps from both sources agree when the timezone dropdown changes.
+
+  [ ] Every Get-MessageTrackingLog parameter used carries a "# Learn <date>:"
+      citation at the call site.
+
+  [ ] UNVERIFIED.md names every assumption made about the on-premises Exchange
+      version, its parameter surface, and log retention.
+
+--------------------------------------------------------------------------------
+DO NOT
+--------------------------------------------------------------------------------
+
+  * Do not add any write path. This tool reads. Quarantine release already
+    exists on the Exchange Online side and is the only exception; do not extend
+    it to on-premises.
+  * Do not query Edge Transport servers unless I have told you they are in
+    scope. If they exist and are excluded, SAY SO in the results header rather
+    than silently omitting a hop.
+  * Do not "helpfully" hide events you think are noise. RECEIVE and SUBMIT rows
+    belong in the timeline even if they are not outcomes.
+  * Do not report Success when any server failed.
+
+Build it, then stop and show me the normalised-row function and the merge before
+you wire the UI. That is the part I want to read.

@@ -1,0 +1,40 @@
+﻿{
+  "_comment": [
+    "TENANT FACTS. This is the only file in the toolkit permitted to contain a",
+    "domain name, a server name, or an organisation's internal vocabulary.",
+    "Everything else reads from here. If a tenant name appears in a .ps1 file,",
+    "that is a bug -- Test-Toolkit checks for it.",
+    "",
+    "Engineer preferences (paths, browser profiles) live in Settings.json, not",
+    "here. This file is the same on every machine at a tenant; that one is not."
+  ],
+  "TenantName": "",
+  "PrimaryDomain": "",
+  "OnMicrosoftDomain": "",
+  "Capabilities": {
+    "ExchangeOnline": true,
+    "SharePointOnline": true,
+    "OnPremAD": false,
+    "OnPremExchange": false,
+    "Pim": false,
+    "PimTimer": false
+  },
+  "Directories": [],
+  "OnPremExchange": {
+    "ServerUri": "",
+    "PreferredDomainController": ""
+  },
+  "Pim": {
+    "DurationHours": 4,
+    "GroupsEligibleUrl": "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadgroup",
+    "RolesEligibleUrl": "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadmigratedroles",
+    "GroupsActiveUrl": "",
+    "RolesActiveUrl": ""
+  },
+  "LicenseGroups": [],
+  "SharePoint": {
+    "AdminUrl": "",
+    "MySiteHost": ""
+  },
+  "Theme": ""
+}

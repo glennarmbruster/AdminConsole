@@ -1,0 +1,98 @@
+﻿{
+    "CapturedAt":  "2026-08-19T11:42:22",
+    "SourceIdentity":  "mothersroom@expresspros.com",
+    "SourceDisplayName":  "CR Mothers Room",
+    "RecipientTypeDetails":  "RoomMailbox",
+    "ResourceCapacity":  1,
+    "HiddenFromGAL":  false,
+    "CustomAttributes":  {
+                             "CustomAttribute3":  "CN=Mothers Room,OU=Resource Mailbox,OU=Accounts,DC=expresspersonnel,DC=com"
+                         },
+    "CalendarProcessing":  {
+                               "AutomateProcessing":  "AutoAccept",
+                               "AllowConflicts":  false,
+                               "BookingWindowInDays":  365,
+                               "MaximumDurationInMinutes":  60,
+                               "MinimumDurationInMinutes":  0,
+                               "AllowRecurringMeetings":  true,
+                               "EnforceSchedulingHorizon":  true,
+                               "ScheduleOnlyDuringWorkHours":  true,
+                               "ConflictPercentageAllowed":  0,
+                               "MaximumConflictInstances":  0,
+                               "ForwardRequestsToDelegates":  true,
+                               "DeleteAttachments":  true,
+                               "DeleteComments":  true,
+                               "RemovePrivateProperty":  false,
+                               "DeleteSubject":  true,
+                               "AddOrganizerToSubject":  false,
+                               "DeleteNonCalendarItems":  true,
+                               "TentativePendingApproval":  true,
+                               "EnableResponseDetails":  true,
+                               "OrganizerInfo":  false,
+                               "ResourceDelegates":  [
+
+                                                     ],
+                               "RequestOutOfPolicy":  [
+
+                                                      ],
+                               "AllRequestOutOfPolicy":  false,
+                               "BookInPolicy":  [
+
+                                                ],
+                               "AllBookInPolicy":  true,
+                               "RequestInPolicy":  [
+
+                                                   ],
+                               "AllRequestInPolicy":  false,
+                               "AddAdditionalResponse":  false,
+                               "AdditionalResponse":  null,
+                               "RemoveOldMeetingMessages":  true,
+                               "AddNewRequestsTentatively":  true,
+                               "ProcessExternalMeetingMessages":  false,
+                               "RemoveForwardedMeetingNotifications":  false,
+                               "EnforceCapacity":  false
+                           },
+    "Place":  {
+                  "Building":  null,
+                  "Capacity":  1,
+                  "Floor":  null,
+                  "FloorLabel":  null,
+                  "Label":  "",
+                  "Tags":  [
+
+                           ],
+                  "AudioDeviceName":  null,
+                  "VideoDeviceName":  null,
+                  "DisplayDeviceName":  null,
+                  "IsWheelChairAccessible":  false,
+                  "MTREnabled":  false,
+                  "Street":  "9701 Boardwalk Blvd",
+                  "City":  "Oklahoma City",
+                  "State":  "Oklahoma",
+                  "PostalCode":  "73162",
+                  "CountryOrRegion":  "United States",
+                  "Phone":  null,
+                  "GeoCoordinates":  null
+              },
+    "CalendarPermissions":  [
+
+                            ],
+    "Regional":  {
+                     "Language":  "en-US",
+                     "DateFormat":  "M/d/yyyy",
+                     "TimeFormat":  "h:mm tt",
+                     "TimeZone":  "Central Standard Time"
+                 },
+    "RoomLists":  [
+
+                  ],
+    "OnPremOU":  "OU=Resource Mailbox,OU=Accounts,DC=expresspersonnel,DC=com",
+    "OnPrem":  {
+                   "l":  "Oklahoma City",
+                   "st":  "Oklahoma",
+                   "postalCode":  "73162",
+                   "streetAddress":  "9701 Boardwalkd Blvd",
+                   "c":  "US"
+               },
+    "NewIdentity":  "PhoneRoom4@ExpressPros.com"
+}

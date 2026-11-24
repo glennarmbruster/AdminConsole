@@ -1,0 +1,13 @@
+﻿{
+  "ButtonsPerRow": 5,
+  "Sections": [
+    {
+      "Name": "Admin Tools",
+      "Rows": 4
+    },
+    {
+      "Name": "Reporting",
+      "Rows": 2
+    }
+  ]
+}

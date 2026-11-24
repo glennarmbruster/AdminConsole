@@ -1,0 +1,104 @@
+﻿{
+    "CapturedAt":  "2026-08-17T11:08:50",
+    "SourceIdentity":  "GulfCoast@expresspros.com",
+    "SourceDisplayName":  "CR Gulf Coast",
+    "RecipientTypeDetails":  "RoomMailbox",
+    "ResourceCapacity":  6,
+    "HiddenFromGAL":  false,
+    "CustomAttributes":  {
+                             "CustomAttribute3":  "CN=CR Gulf Coast,OU=Resource Mailbox,OU=Accounts,DC=expresspersonnel,DC=com"
+                         },
+    "CalendarProcessing":  {
+                               "AutomateProcessing":  "AutoAccept",
+                               "AllowConflicts":  false,
+                               "BookingWindowInDays":  365,
+                               "MaximumDurationInMinutes":  1440,
+                               "MinimumDurationInMinutes":  10,
+                               "AllowRecurringMeetings":  true,
+                               "EnforceSchedulingHorizon":  true,
+                               "ScheduleOnlyDuringWorkHours":  false,
+                               "ConflictPercentageAllowed":  0,
+                               "MaximumConflictInstances":  0,
+                               "ForwardRequestsToDelegates":  false,
+                               "DeleteAttachments":  true,
+                               "DeleteComments":  false,
+                               "RemovePrivateProperty":  false,
+                               "DeleteSubject":  false,
+                               "AddOrganizerToSubject":  false,
+                               "DeleteNonCalendarItems":  true,
+                               "TentativePendingApproval":  true,
+                               "EnableResponseDetails":  true,
+                               "OrganizerInfo":  true,
+                               "ResourceDelegates":  [
+
+                                                     ],
+                               "RequestOutOfPolicy":  [
+
+                                                      ],
+                               "AllRequestOutOfPolicy":  false,
+                               "BookInPolicy":  [
+
+                                                ],
+                               "AllBookInPolicy":  true,
+                               "RequestInPolicy":  [
+
+                                                   ],
+                               "AllRequestInPolicy":  true,
+                               "AddAdditionalResponse":  false,
+                               "AdditionalResponse":  null,
+                               "RemoveOldMeetingMessages":  true,
+                               "AddNewRequestsTentatively":  true,
+                               "ProcessExternalMeetingMessages":  true,
+                               "RemoveForwardedMeetingNotifications":  true,
+                               "EnforceCapacity":  false
+                           },
+    "Place":  {
+                  "Building":  "HQ",
+                  "Capacity":  6,
+                  "Floor":  7,
+                  "FloorLabel":  "2-East",
+                  "Label":  "",
+                  "Tags":  [
+                               "TeamsRoom"
+                           ],
+                  "AudioDeviceName":  null,
+                  "VideoDeviceName":  null,
+                  "DisplayDeviceName":  null,
+                  "IsWheelChairAccessible":  false,
+                  "MTREnabled":  false,
+                  "Street":  "9701 Boardwalk Blvd",
+                  "City":  "Oklahoma City",
+                  "State":  "Oklahoma",
+                  "PostalCode":  "73162",
+                  "CountryOrRegion":  "United States",
+                  "Phone":  null,
+                  "GeoCoordinates":  null
+              },
+    "CalendarPermissions":  [
+                                {
+                                    "User":  "Default",
+                                    "AccessRights":  [
+                                                         "Reviewer"
+                                                     ]
+                                }
+                            ],
+    "Regional":  {
+                     "Language":  "en-US",
+                     "DateFormat":  "M/d/yyyy",
+                     "TimeFormat":  "h:mm tt",
+                     "TimeZone":  "Central Standard Time"
+                 },
+    "RoomLists":  [
+                      "AllHQRooms@ExpressPros.com"
+                  ],
+    "OnPremOU":  "OU=Resource Mailbox,OU=Accounts,DC=expresspersonnel,DC=com",
+    "OnPrem":  {
+                   "l":  "Oklahoma City",
+                   "st":  "Oklahoma",
+                   "postalCode":  "73162",
+                   "streetAddress":  "9701 Boardwalkd Blvd",
+                   "c":  "US",
+                   "physicalDeliveryOfficeName":  "2075 2-East"
+               },
+    "NewIdentity":  "MarCommMtgRm@ExpressPros.com"
+}

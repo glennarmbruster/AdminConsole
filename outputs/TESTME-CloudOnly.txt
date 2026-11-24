@@ -1,0 +1,95 @@
+﻿TESTME -- CLOUD-ONLY MODE, FIRST RUN                            2026-09-19
+==========================================================================
+
+WHAT CHANGED. A tool is now HIDDEN, not greyed, when the tenant's own
+Capabilities say it has no such thing. Greying still means 'could work once
+you connect'. Two different facts, two different signals.
+
+Hybrid tenants see NO change: every capability is ticked, so nothing hides.
+
+--------------------------------------------------------------------------
+SETUP  (5 minutes)
+--------------------------------------------------------------------------
+1. Copy TenantConfigs\Tenant.gcearth.json to the install's
+   Config\Tenants\gcearth.json
+2. Launch:  .\AdminConsole.ps1 -Tenant gcearth
+3. Nothing else. Do NOT edit Tools.json.
+
+To undo: launch with -Tenant against a hybrid tenant as usual. Nothing in
+this batch touches hybrid behaviour.
+
+--------------------------------------------------------------------------
+EXPECTED AT LAUNCH -- if this is wrong, stop and tell me
+--------------------------------------------------------------------------
+* The status line reads: '25 tool(s) hidden: this tenant has no OnPremAD,
+  OnPremExchange, MicrosoftGraph. Tenant Manager changes that.'
+* Hovering the TENANT NAME in the header lists every hidden tool and why.
+* Sections reflow with no gaps. A section whose tools all hid disappears.
+* These 19 are GONE (no AD, no on-premises Exchange):
+     AD Lookup                    Mailbox Health
+     Cert Check                   MB w No activity
+     Create/Delete DL and Shared MB   New User
+     Diagnose AD Gate             No Remote Mailbox
+     Enable Archive               OnPrem (connect button)
+     Group-Bulk Management        Password Manager
+     Group-Owner Groups           Resource Settings Duplicator
+     Mail Attributes (Rename)     Returning User
+     Mailbox / Onedrive Perms     Term Requests
+     User Office
+* These 6 are also gone while MicrosoftGraph is false:
+     Auth Methods, Licence Assignment, MSGraph (connect), Risky Users,
+     Service Health, Sign-in Activity
+
+--------------------------------------------------------------------------
+THE ACTUAL TEST -- 8 tools that STAY and must degrade gracefully
+--------------------------------------------------------------------------
+These declare TOOLKIT-VARIANT: Dual, so they are never hidden -- they are
+supposed to handle the missing half themselves. This is the list worth your
+time. Open each, load a real cloud object, and answer one question:
+
+    Does it work cloud-side, and does it SAY why the on-prem part is
+    absent -- or does it throw / show a blank grid / silently do nothing?
+
+  1. Mailbox Editor      Load a mailbox. Editing switch should sit on Cloud
+                         and be disabled. Walk every tab. Overview, Health,
+                         Addresses, Access matter most.
+  2. Person Editor       Load a user. Expect read-only with a plain reason
+                         on the banner, not an error dialog.
+  3. Group Editor        Load a cloud group. Members, owners, addresses.
+  4. Hide / Unhide       Should write cloud-side without asking about AD.
+  5. DL to SharedMB      Cloud path only.
+  6. Hybrid Attribute Check   Should say 'nothing to compare', not fail.
+  7. Diagnose ExO Resolve     Should still diagnose the cloud half.
+  8. Group Manager Editor     (being parked anyway -- lowest priority)
+
+ALSO WORTH ONE PASS:
+  Unified Lookup (Look Up box, top of the console). Not in Tools.json so it
+  is never hidden. Search a name. The Source column should not claim
+  'Synced' or 'On-prem' anywhere, and the bottom buttons should route
+  sensibly. I expect this one to need work -- it is the most likely finding.
+
+--------------------------------------------------------------------------
+WHAT COUNTS AS A FINDING
+--------------------------------------------------------------------------
+  BAD   A red error, an empty grid with no explanation, a hang, or a button
+        that does nothing.
+  BAD   A tool that is hidden but shouldn't be, or visible but can't work.
+  FINE  A tool that opens, works cloud-side, and says in words that the
+        on-premises part is not available here.
+
+For each finding I need: tool name, what you did, what happened. The exact
+error text if there is one.
+
+--------------------------------------------------------------------------
+KNOWN GAPS -- not bugs, decide later
+--------------------------------------------------------------------------
+* Term Requests, New User and Returning User are hidden. A cloud-only
+  tenant still needs a starter and a leaver process; there isn't one yet.
+* Password Manager is hidden and has no cloud equivalent -- cloud password
+  reset needs Graph.
+* Turning MicrosoftGraph on in Tenant Manager should make the 6 Graph tools
+  appear on next launch with nothing else changing. Worth testing once the
+  app registration exists.
+
+Side note, unrelated: FranUser_Office.ps1 carries a banned word in its own
+filename and header. Pre-existing; worth a rename when convenient.

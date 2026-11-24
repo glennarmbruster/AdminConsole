@@ -1,0 +1,36 @@
+Inventory-HQ-P1-InScope.ps1
+Inventory-HQ-P1-OutofScope.ps1
+_Inventory-Shared.ps1
+
+Written 2026-08-13. Replaced the same day, before either was run against real
+data. Parked rather than deleted -- Glenn asked for them to be removed from the
+DLMigration folder; this is the undo copy.
+
+WHY THEY WERE REPLACED
+
+They scoped to one directory and enriched every row -- member counts, nested
+group detection, resolved owners. That is one AD bulk read plus a chunked LDAP
+pass plus an owner lookup per distinct ManagedBy, and all of it before you can
+look at a single row.
+
+The scoping turned out to be the weak part. Exchange has to search the whole
+forest to answer Get-DistributionGroup anyway, so filtering to one directory
+afterwards saved nothing at query time and cost the ability to see the rest of
+the estate. If the expensive part happens regardless, pull everything once and
+slice it afterwards.
+
+Replaced by Inventory-AllGroups.ps1: every mail-enabled group, three fields,
+no AD calls at all.
+
+WORTH KEEPING IF THE ENRICHMENT IS WANTED LATER
+
+  Get-GroupDnLookup      chunked LDAP nested-group detection, routed per
+                         directory. Fifty DNs per filter instead of one query
+                         per member.
+  Get-OwnerText          ManagedBy resolved to name + address, cached.
+  Get-HqGroupInventory   the Exchange/AD join on distinguishedName.
+
+The directory-scoping helpers those relied on are NOT here -- they live in
+Common.ps1 (ConvertTo-DomainDn, Get-DirectoryDomainDn,
+Resolve-DistinguishedNameDirectory, Test-DnInDirectory) and are documented in
+ARCHITECTURE section 32, including the child-domain longest-suffix trap.

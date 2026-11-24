@@ -1,0 +1,12 @@
+﻿{
+  "ReportsPath": "",
+  "LogPath": "",
+  "RetryQueuePath": "",
+  "OperatorEmail": "",
+  "SpoAdminUrl": "",
+  "ExchangeServerUri": "",
+  "BrowserProfiles": {
+    "Admin": "",
+    "Standard": ""
+  }
+}

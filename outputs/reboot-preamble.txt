@@ -1,0 +1,342 @@
+#Requires -Version 5.1
+# TOOLKIT-VARIANT: OnPremExchange
+# TOOLKIT-REQUIRES: OnPremExchange
+# TOOLKIT-OWN-PROCESS: Connects to on-premises Exchange and holds the session for the length of a reboot run.
+<#
+    ServerReboot.ps1
+    Post-patch reboots for on-premises Exchange, one site at a time.
+
+    Author   : Ihtesham (original), refactored for the Admin Console
+    Revised  : 2026-09-17
+
+    WHAT IT DOES. A full-screen console for the whole post-patch reboot run:
+    DAG maintenance mode, database and cluster fail-over, the reboot itself,
+    and a grid of health checks that must all go green before the next server
+    in the same site is released.
+
+    THE SITE RULE, WHICH IS THE POINT OF THE TOOL. Never two servers of the
+    same site at once. Tick as many as you like: the scheduler runs at most one
+    per site, so one server from each site goes together and the rest queue. The
+    next server in a site is only released once the previous one is GREEN on
+    every check -- so the rule holds even if you walk away from the screen.
+
+    A MAILBOX SERVER goes: pre-flight (reachable, reboot really is pending, DAG
+    has quorum to spare, every other copy healthy) -> maintenance (transport
+    draining, PAM moved off, node suspended, databases moved, ServerWideOffline)
+    -> reboot -> post checks -> maintenance reversed -> databases and cluster
+    group moved back -> verify. The hard gate: the reboot does not happen until
+    the server hosts zero active databases and does not own the cluster group.
+
+    AN EDGE SERVER has no DAG, so it drains transport, waits for the queues to
+    empty, reboots, and is checked on services and queues.
+
+    ---------------------------------------------------------------------------
+    WHAT THE REFACTOR CHANGED, AND WHY
+    ---------------------------------------------------------------------------
+
+    NO SERVER NAMES IN THIS FILE. The original carried eight of them as a
+    parameter default, plus two conventions read out of the names: the site was
+    the first four characters and the role was the trailing number. Both are
+    facts about ONE organisation's naming, and this toolkit ships the same .ps1
+    to installs that name nothing the same way. They live in Tenant.json now --
+    see Get-RebootServerList below, which is the only place that knows.
+
+    SITE AND ROLE ARE DECLARED, NOT INFERRED. A regex over a server name is a
+    guess that looks like a fact: rename a box, or add a ninth that breaks the
+    pattern, and the tool silently files it in the wrong site -- which on this
+    tool means rebooting two servers of one site at once, the exact thing it
+    exists to prevent. Declaring them costs one line of JSON per server and
+    cannot be wrong quietly.
+
+    THE LOG GOES TO THE LOGS FOLDER. The original wrote beside the script.
+
+    REPORTS GO THROUGH THE SHARED CONTROLS, so Report Browser finds them and
+    they are named like every other report in the toolkit.
+
+    EVERY REBOOT IS AUDITED. One CompletedTasks entry per server, success or
+    failure, with the tenant -- the same record every other destructive tool in
+    this toolkit leaves.
+
+    THE STA RELAUNCH IS GONE. The original re-ran itself with -File when it
+    found a non-STA apartment. The console launches its own-process tools with
+    -Command and prepends Connect-ExSE, so that relaunch would have opened a
+    SECOND window with no Exchange session and left the first one waiting.
+    PowerShell 5.1 is STA by default; a non-STA host is now reported rather
+    than worked around.
+
+    THE 3D THEME LIBRARY IS GONE. The toolkit has its own theming and its own
+    raised button chrome, and a tool carrying a second one looks like a
+    different program.
+
+    WHAT WAS DELIBERATELY NOT TOUCHED. The worker bodies, the DAG maintenance
+    sequence, the health checks, the retry and settle logic, and the event queue
+    that carries results back to the UI thread. That is the part that took the
+    thinking, it is correct, and a refactor is not a rewrite.
+#>
+# TOOLKIT-HELP-RUNS: Reboots production Exchange servers. Every destructive action is behind a typed confirmation, and Simulate walks the whole pipeline without touching anything.
+# TOOLKIT-HELP-BEGIN
+# Post-patch reboots for the on-premises Exchange servers, one site at a time.
+#
+# ON LOAD it scans every server in Tenant.json and shows which are PATCHED and
+# waiting for a reboot, so nothing is rebooted on a guess.
+#
+# THE SITE RULE. Tick as many servers as you like. At most one per site runs at
+# a time; the next in that site is released only when the previous one is green
+# on every check. A server in a different site runs alongside it. "Allow one
+# Mailbox + one Edge per site" relaxes that to two per site -- never two of the
+# same role -- and is off by default, because one at a time is the safe answer.
+#
+# SIMULATE walks the entire pipeline, posts every step, and touches nothing.
+# Run it first on a new install: it proves the server list, the Exchange
+# session and the site rule without a single restart.
+#
+# NOTHING IS HIDDEN. Every step is a row in the Step Log, the run can be
+# exported as CSV, text or HTML to the Reports folder, and a dated log is
+# written to the Logs folder.
+#
+# WHAT IT NEEDS IN Tenant.json, under OnPremExchange:
+#
+#     "Servers": [
+#         { "Name": "SERVER01", "Site": "SiteA", "Role": "Mailbox" },
+#         { "Name": "SERVER03", "Site": "SiteA", "Role": "Edge"    }
+#     ]
+#
+# Role is Mailbox or Edge. Site is any label you like -- it only has to be the
+# SAME for servers that must not reboot together. Anything in ExcludedServers
+# is shown greyed with the reason, never ticked.
+#
+# A plain list of names still loads, but those servers cannot be rebooted until
+# they are given a Site and a Role: without them the tool cannot honour the site
+# rule, and it will not guess.
+# TOOLKIT-HELP-END
+
+[CmdletBinding()]
+param(
+    # Accepted and ignored. The console passes these to every tool it launches;
+    # this one acts on servers, not on a mailbox.
+    [string]$SmtpAddress,
+    [string]$Environment,
+    [string]$DomainController,
+
+    # Override the server list from Tenant.json. For a one-off run against a
+    # subset; site and role still come from config.
+    [string[]]$Servers,
+
+    [ValidateRange(0, 100000)]
+    [int]$QueueThreshold = 50,
+
+    [ValidateRange(0, 100000)]
+    [int]$CopyQueueThreshold = 10,
+
+    [ValidateRange(0, 100000)]
+    [int]$ReplayQueueThreshold = 10,
+
+    [ValidateRange(5, 240)]
+    [int]$RebootTimeoutMinutes = 30,
+
+    [ValidateRange(1, 240)]
+    [int]$SettleTimeoutMinutes = 20,
+
+    [ValidateRange(1, 240)]
+    [int]$DrainTimeoutMinutes = 10,
+
+    [ValidateRange(1, 365)]
+    [int]$HotfixMaxAgeDays = 30
+)
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+. (Join-Path $PSScriptRoot 'Common.ps1')
+if (-not (Test-ConsoleLaunch)) { return }
+
+# A NON-STA HOST IS REPORTED, NOT WORKED AROUND.
+#
+# The original relaunched itself with -File when it found an MTA apartment.
+# That cannot stay: the console starts its own-process tools with -Command and
+# prepends Connect-ExSE, so relaunching would open a second window with no
+# Exchange session while the first sat waiting for it. PowerShell 5.1 is STA by
+# default, so this only fires for a host started with -MTA on purpose -- and
+# the honest answer there is to say so.
+if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
+    $null = Show-ToolDialog(
+        ("This PowerShell window is running in MTA mode, and WinForms needs STA." + [Environment]::NewLine + [Environment]::NewLine +
+         "Open the tool from the Admin Console, or start a new window with:" + [Environment]::NewLine +
+         "    powershell.exe -Sta"),
+        'Server Reboot', 'OK', 'Warning')
+    return
+}
+
+# Make the process DPI aware before any window is created, otherwise Windows
+# bitmap-stretches the form on scaled displays and clips label / button text.
+if (-not ('Win32.DpiHelper' -as [type])) {
+    Add-Type -Namespace Win32 -Name DpiHelper -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool SetProcessDPIAware();
+'@
+}
+try { [void][Win32.DpiHelper]::SetProcessDPIAware() } catch { }
+
+[System.Windows.Forms.Application]::EnableVisualStyles()
+try { [System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false) } catch { }
+
+#region The server list, from config ------------------------------------------
+#
+# THE ONLY PLACE THAT KNOWS WHAT THE SERVERS ARE CALLED.
+#
+# Everything below this region works from the objects this returns, so a tenant
+# whose servers are named nothing like another tenant's needs no code change --
+# which is the whole reason the names came out of the file.
+
+function Get-RebootServerList {
+    <#
+        Every Exchange server this install manages, as
+        { Name; Site; Role; Excluded; ExcludeReason; Problem }.
+
+        FROM Tenant.json -> OnPremExchange.Servers, which accepts two shapes:
+
+            "Servers": [ { "Name": "X", "Site": "SiteA", "Role": "Mailbox" } ]
+            "Servers": [ "X", "Y" ]
+
+        THE SECOND SHAPE IS THE OLD ONE AND IS DELIBERATELY STILL READ. An
+        install that predates this tool already lists its servers as bare
+        names; refusing to load them would present an empty grid and no
+        explanation. They load with Problem set instead, show in the grid, and
+        cannot be ticked -- so the screen says exactly what is missing and
+        where to put it.
+
+        SITE AND ROLE ARE NEVER GUESSED. The original derived both from the
+        server name. That works until it does not, and the failure mode here is
+        two servers of one site rebooting together -- the one thing this tool
+        exists to prevent. A guess that is right most of the time is worse than
+        a blank that says so.
+
+        ExcludedServers is honoured but NOT hidden: an excluded server comes
+        back with Excluded set and appears greyed, because "why is that box not
+        in the list" is a question somebody asks at 2am with a change window
+        running.
+    #>
+    $out = @()
+    $cfg = $null
+    try { $cfg = (Get-TenantConfig).OnPremExchange } catch { }
+    if (-not $cfg) { return $out }
+
+    $excluded = @{}
+    try {
+        foreach ($x in @($cfg.ExcludedServers)) {
+            $n = "$x".Trim()
+            if ($n) { $excluded[$n.ToUpperInvariant()] = $true }
+        }
+    } catch { }
+
+    $seen = @{}
+    foreach ($entry in @($cfg.Servers)) {
+        if (-not $entry) { continue }
+
+        $name = ''; $site = ''; $role = ''
+        if ($entry -is [string]) {
+            $name = "$entry".Trim()
+        } else {
+            try {
+                $name = "$($entry.Name)".Trim()
+                $site = "$($entry.Site)".Trim()
+                $role = "$($entry.Role)".Trim()
+            } catch { }
+        }
+        if (-not $name) { continue }
+
+        $key = $name.ToUpperInvariant()
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+
+        # Mailbox or Edge, and nothing else -- the two pipelines are genuinely
+        # different and there is no sensible default for a third word.
+        $problem = ''
+        if ($role) {
+            if ($role -match '^(?i)mailbox$')  { $role = 'Mailbox' }
+            elseif ($role -match '^(?i)edge$') { $role = 'Edge' }
+            else { $problem = "Role '$role' is not Mailbox or Edge." ; $role = '' }
+        }
+        if (-not $site -and -not $problem) { $problem = 'No Site in Tenant.json.' }
+        if (-not $role -and -not $problem) { $problem = 'No Role in Tenant.json.' }
+        if (-not $site -and -not $role)    { $problem = 'No Site or Role in Tenant.json.' }
+
+        $out += [pscustomobject]@{
+            Name          = $key
+            Site          = $(if ($site) { $site } else { 'UNKNOWN' })
+            Role          = $(if ($role) { $role } else { 'Mailbox' })
+            Excluded      = [bool]$excluded[$key]
+            ExcludeReason = $(if ($excluded[$key]) { 'Listed under ExcludedServers in Tenant.json.' } else { '' })
+            Problem       = $problem
+        }
+    }
+    return $out
+}
+
+$script:ServerConfig = @()
+try { $script:ServerConfig = @(Get-RebootServerList) } catch { $script:ServerConfig = @() }
+
+# -Servers narrows the run; it never invents one. A name that is not in config
+# has no site and no role, so honouring it would mean guessing exactly what
+# this refactor removed.
+if ($Servers -and @($Servers).Count -gt 0) {
+    $want = @{}
+    foreach ($s in @($Servers)) { $n = "$s".Trim().ToUpperInvariant(); if ($n) { $want[$n] = $true } }
+    $script:ServerConfig = @($script:ServerConfig | Where-Object { $want[$_.Name] })
+}
+
+$script:ServerIndex = @{}
+foreach ($s in $script:ServerConfig) { $script:ServerIndex[$s.Name] = $s }
+
+function Get-ServerSite {
+    <# The declared site, or UNKNOWN. Never derived from the name -- see Get-RebootServerList. #>
+    param([string]$Name)
+    $e = $script:ServerIndex["$Name".Trim().ToUpperInvariant()]
+    if ($e) { return "$($e.Site)" }
+    return 'UNKNOWN'
+}
+
+function Get-ServerRole {
+    <# The declared role. Mailbox is the shape of the fuller pipeline, so it is the safer blank. #>
+    param([string]$Name)
+    $e = $script:ServerIndex["$Name".Trim().ToUpperInvariant()]
+    if ($e) { return "$($e.Role)" }
+    return 'Mailbox'
+}
+
+function Get-ServerBlockReason {
+    <#
+        Why this server cannot be ticked, or ''.
+
+        Excluded first, because that is a decision somebody made; a missing
+        Site or Role is an omission and reads differently.
+    #>
+    param([string]$Name)
+    $e = $script:ServerIndex["$Name".Trim().ToUpperInvariant()]
+    if (-not $e) { return 'Not in Tenant.json.' }
+    if ($e.Excluded) { return $e.ExcludeReason }
+    if ($e.Problem)  { return $e.Problem }
+    return ''
+}
+
+function Get-ExchangeCandidate {
+    <#
+        Mailbox servers the Exchange PSSession may run through.
+
+        DERIVED, NOT CONFIGURED. The original carried a second hand-maintained
+        list of connection servers, which is the same facts written twice: any
+        healthy Mailbox server will host the session, and a list that can drift
+        out of step with the server list is a list that eventually names a box
+        that has been decommissioned.
+
+        Excluded and misconfigured servers are out -- an Edge server has no
+        Exchange management endpoint worth using, and a server the install has
+        excluded should not be reached into either.
+    #>
+    return @($script:ServerConfig |
+             Where-Object { $_.Role -eq 'Mailbox' -and -not $_.Excluded -and -not $_.Problem } |
+             ForEach-Object { $_.Name })
+}
+#endregion
+
+# --- Theme --------------------------------------------------------------------

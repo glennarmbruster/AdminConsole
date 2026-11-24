@@ -1,0 +1,38 @@
+[
+    {
+        "Order":  1,
+        "Name":  "Mailbox Health",
+        "Script":  ".\\SRGMailboxHealth.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Tier":  "Tier1"
+    },
+    {
+        "Order":  2,
+        "Name":  "Message Trace",
+        "Script":  ".\\SRGMessageTrace.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Tier":  "Tier1"
+    },
+    {
+        "Order":  3,
+        "Name":  "Mailbox Permissions",
+        "Script":  ".\\SRGMailboxPermissions.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Tier":  "Tier2"
+    },
+    {
+        "Order":  4,
+        "Name":  "Disable",
+        "Script":  ".\\SRGDisable.ps1",
+        "ObjectTypes":  [
+                            "Mailbox"
+                        ],
+        "Tier":  "Tier1"
+    }
+]

@@ -1,0 +1,483 @@
+===============================================================================
+ADMIN CONSOLE -- LOOK AND FEEL / SIZE AND ALIGNMENT CHANGES
+Record of work carried out 2026-09-15
+===============================================================================
+
+GOAL
+    Make the Admin Console tools match the look and feel of the GUI scripts in
+    Z:\IHTESHAM\PS_Scripts (theme, colours, button shape and size, screen
+    alignment), without changing the logic of any tool, and fix the section
+    headings that were being buried under the button panels.
+
+    Nothing in Z:\IHTESHAM\PS_Scripts was modified.
+
+
+-------------------------------------------------------------------------------
+1. WHAT WAS DELIVERED, AND WHERE
+-------------------------------------------------------------------------------
+
+A) X:\...\Devin\AdminConsole\AdminConsole-Themed\        (new folder)
+   A complete, runnable copy of the toolkit with the shared PS_Scripts theme
+   applied. Launch AdminConsole-Themed\AdminConsole.ps1.
+   - 149 files total; 121 .ps1 scripts.
+   - Of those 121 scripts, only TWO differ from the originals:
+       Common.ps1        (theme retrofit)
+       AdminConsole.ps1  (heading / spacing fix)
+     The other 119 tool scripts are byte-identical copies. Verified by hash.
+   - New subfolder Lib\ containing 4 files copied byte-identical from
+     Z:\IHTESHAM\PS_Scripts\Lib:
+       Gui3DTheme.ps1, Gui3DTheme.WinForms.ps1, Gui3DTheme.Wpf.ps1,
+       Gui3DExoAuth.ps1
+     These are NOT forked. Re-verified identical at the end of the work.
+
+B) X:\...\Devin\AdminConsole\AdminConsole.ps1            (main folder)
+   The heading / spacing fix ONLY was applied here, on request. It is now
+   byte-identical to the themed copy's AdminConsole.ps1.
+   The main folder's Common.ps1 was NOT touched, so the main console keeps its
+   original themes (Powder etc.) and has no Gui3D code in it.
+
+   BACKUP of the original main file, taken before writing:
+       X:\...\Devin\AdminConsole.ps1.pre-headingfix-20260915-123538.bak
+   Verified identical to the original at the time of backup. To roll back,
+   copy this file over AdminConsole\AdminConsole.ps1.
+
+   The backup and this record are deliberately stored OUTSIDE the AdminConsole
+   folder so they do not appear as "extra" files in the integrity manifest.
+
+
+-------------------------------------------------------------------------------
+2. WHY ONLY ONE FILE CARRIES THE WHOLE THEME
+-------------------------------------------------------------------------------
+    Every tool in the toolkit already calls Set-ConsoleTheme -Form $form from
+    Common.ps1 -- 335 call sites. That is a single choke point, so the entire
+    look could be swapped there instead of editing ~120 tool scripts. This is
+    why no tool script needed changing and why no tool logic was touched.
+
+    The PS_Scripts look itself comes from Lib\Gui3DTheme.ps1, applied with one
+    call (Set-Gui3DTheme). It works by walking the finished control tree and
+    setting local values, so it can be retrofitted onto an existing form
+    without the form knowing anything about it.
+
+
+-------------------------------------------------------------------------------
+3. CHANGES TO Common.ps1  (themed copy only)
+-------------------------------------------------------------------------------
+
+3.1 New region at the top of the file: "Shared GUI theme (Gui3D)"
+    - Dot-sources Lib\Gui3DTheme.ps1, resolved against the script's own folder.
+    - Installs no-op fallbacks for Set-Gui3DTheme / Start-ExoAuthWatch /
+      Stop-ExoAuthWatch if the library is missing, so a missing theme file can
+      never stop a tool from opening.
+
+3.2 ConvertTo-Gui3DHex
+    Converts System.Drawing.Color to '#RRGGBB'. Needed because every consumer
+    in Common.ps1 reads theme values through ConvertTo-ThemeColor, which takes
+    a string.
+
+3.3 Get-Gui3DConsoleTheme
+    Builds the Gui3D light palette as a console theme object, cached in
+    $global:AdminConsoleGui3DTheme. Every key the toolkit reads is set, so no
+    consumer falls back to its own hardcoded colour:
+
+      FormBack    #F0F0F0   light grey shell
+      FormText    #323232   near-black body text
+      PanelBack   #FFFFFF   content surfaces
+      GroupText   #323232
+      GradientTo  (empty)   flat shell -- no gradient, matching PS_Scripts
+      ButtonBack  #FFFFFF   secondary buttons: white face
+      ButtonText  #323232
+      ButtonBorder#C4CCD6
+      ButtonHover #EDF3FB
+      ButtonDown  #EEF1F4
+      InputBack   #FFFFFF
+      InputText   #323232
+      SelectedText#1565C0
+      AccentBack  #1565C0   the one primary action per window
+      AccentText  #FFFFFF
+      AccentHover #3F81CB   derived: accent lightened 18%
+      DangerColor #B3261E   destructive action
+      ServiceNow  #1B7F3B   + white text, derived hover, matching border
+      QuickLaunchAdmin*      accent / accent-dark based
+      FontFamily  Segoe UI
+      MonoFamily  Consolas
+
+3.4 Get-ConsoleTheme -- forced to the Gui3D palette
+    When called with NO -Name (which is what all ~20 callers do), it now
+    returns Get-Gui3DConsoleTheme. A call WITH -Name still reads Themes.json,
+    on purpose, so Theme Manager's preview swatches still tell the truth about
+    what is in the file. Safe mode still short-circuits to $null as before.
+    Net effect: Config\Themes.json is no longer consulted for the active look.
+
+3.5 Test-RaisedButtonStyle -- now always returns $false
+    NOT a preference. Gui3D owner-draws the button face (gradient, gloss,
+    bevel, shadow) by attaching its own Paint handler. The toolkit's
+    Add-RaisedButtonChrome attaches a SECOND Paint handler drawing a different
+    bevel underneath it. Both run on every repaint: the toolkit's bevel is
+    drawn and then immediately painted over, costing two full redraws per
+    mouse move and showing as flicker. One renderer owns the face.
+    Settings.ConsoleButtonStyle is left in Settings.json and ignored.
+
+3.6 Danger button role -- the red now fills the face
+    Previously a destructive button was a normal face with red text and a red
+    border. Gui3D decides what to paint from a control's BackColor and then
+    sets the foreground itself, so a white-faced button came out of the second
+    pass as an ordinary neutral button and the destructive action lost its only
+    cue. Now BackColor = DangerColor and ForeColor = white, which snaps to the
+    palette red. (White text, not red, so the pass still stands on its own if
+    the theme library is ever missing.)
+
+3.7 Protect-Gui3DOwnerDrawn  (new)
+    Reserves controls that already draw themselves so the Gui3D pass leaves
+    them alone, by marking Get-G3DState($c).Themed = $true -- the library's own
+    guard. Also tags them Gui3DOwnerDrawn.
+
+    THIS EXISTS BECAUSE WITHOUT IT THE MAIN MENU COMES UP BLANK. A console tool
+    tile is a Button that paints its own gradient, bevel and caption from the
+    object in its Tag, and its .Text is deliberately EMPTY. Paint handlers run
+    in the order added, so the tile drew its caption and then Gui3D painted its
+    own face over the top and labelled it with .Text -- an empty string. The
+    result was a grid of correctly raised, completely unlabelled tiles.
+    Detected by: a Button with a non-string Tag exposing a Caption property, or
+    more broadly a non-string Tag and no text of its own.
+    No change to the shared library was needed to make room for this.
+
+3.8 Set-Gui3DTheme is called with -SkipAnimation, and Set-Gui3DHoverSnap (new)
+    REQUIRED, not cosmetic. Gui3D eases its hover highlight on a shared
+    System.Windows.Forms.Timer created lazily in whatever script scope first
+    animated a control. That is fine in PS_Scripts, where a tool IS the
+    process. The Admin Console launches tools IN-PROCESS with the call
+    operator, so each tool dot-sources Common.ps1 -- and through it the theme
+    library -- into its own transient script scope and gets its OWN timer with
+    a Tick handler bound to that scope. When the tool ends the scope is torn
+    down; if its timer is still enabled the next tick cannot resolve
+    Invoke-G3DAnimationFrame and throws CommandNotFoundException into the
+    console's message loop. This was seen in practice as:
+        "The term 'Invoke-G3DAnimationFrame' is not recognized..."
+        over a console that was otherwise still running.
+    The library's own notes on Stop-G3DAnimation describe this exact failure.
+
+    -SkipAnimation is the library's supported way to get the look without the
+    timer. Checked what it costs: the only two Start-G3DAnimation call sites
+    are inside "if (-not $SkipAnimation)" guards, and MouseDown/MouseUp are
+    OUTSIDE them. So raised faces, wells, cards and press feedback are all
+    kept; only the eased hover and the pointer sheen are lost.
+
+    Set-Gui3DHoverSnap puts hover feedback back as an instant snap (set the
+    state, invalidate) -- the same two visual states the animation ended on,
+    with no timer. Unlike a timer these handlers only fire while the pointer is
+    over a live control on a live form, so they cannot outlive their scope.
+    Owner-drawn tiles are skipped (they track their own Hot/Pressed state).
+
+3.9 global:Invoke-G3DAnimationFrame  (new safety net)
+    Fixing the code cannot help a process that is ALREADY running with an
+    armed orphan timer and the old definitions in memory. When a scriptblock's
+    own scope is gone, name resolution falls through to the GLOBAL scope, so a
+    global function of this name catches exactly those orphaned calls. In an
+    Add_Tick handler $this is the sender, so the net reaches one scope up the
+    call stack, takes the Timer and Stop()s and Dispose()s it -- killing the
+    orphan on its first tick instead of swallowing an error 66 times a second.
+
+    KNOWN AND ACCEPTED SIDE EFFECT: this DOES shadow the library's real
+    animator in the process (measured -- Get-Command -All reports exactly one
+    visible definition, this one). Acceptable here because animation is off by
+    design and the library's animator has exactly one caller in the world, the
+    Tick handler. It does mean this Common.ps1 is not a drop-in for a caller
+    that wants the eased animation; that would mean fixing the lifetime problem
+    in the library instead.
+
+3.10 Set-Gui3DWindowBehavior  (new)  -- SIZE AND SCREEN ALIGNMENT
+    Applied to every themed form:
+      - FormBorderStyle = Sizable, MaximizeBox and MinimizeBox on. Set before
+        the form is shown, because assigning FormBorderStyle after the handle
+        exists makes WinForms recreate the window, which flashes.
+      - At Shown (the first moment the layout is final, and after WinForms has
+        done its own DPI scaling): clamp the size to the working area, set
+        MinimumSize to the designed size so the window can only grow, and
+        centre it on the screen it actually opened on.
+      - Skips message boxes: anything marked Tag 'NoAutoScale' or built as a
+        FixedDialog is left exactly as it was.
+      - Hooked once per form, so a second Set-ConsoleTheme call cannot
+        re-centre a window the operator has already moved.
+
+    WHY NOT MAXIMISED, WHICH IS WHAT THE PS_SCRIPTS TOOLS DO:
+    those windows are built from layout containers (TableLayoutPanel, Dock,
+    Anchor) so growing the window grows the contents. Every form in this
+    toolkit is laid out with absolute pixel coordinates at a designed size
+    (e.g. ClientSize 604x440 with a Close button pinned at 12,400). Maximising
+    one of those enlarges nothing -- it leaves the controls clustered in the
+    top-left of a mostly empty window, which looks worse than the designed
+    size. So the designed size is kept as a floor and the window is centred.
+    This was agreed up front.
+
+3.11 Set-FormScreenCorner -- now centres the window
+    Was pinning to TopLeft / BottomLeft. Every PS_Scripts GUI opens centred,
+    and a window that jumps to the bottom-left is the most obvious difference.
+    The -Corner parameter is kept and accepted (140 call sites pass it) and is
+    deliberately ignored. The existing size clamp is unchanged.
+
+3.12 The two passes and why the order is load-bearing
+    Set-ConsoleTheme's own walk runs FIRST and paints in palette colours. It is
+    the pass that honours the toolkit's Tag = 'NoTheme' opt-out, so a red
+    "not connected" pill is never redecorated. Set-Gui3DTheme then runs over
+    the finished tree and adds the depth. It reads each control's colour to
+    decide what to paint and snaps it onto the shared accents BY HUE, so it has
+    to go second -- that way the roles the first pass assigned (blue primary,
+    red destructive, green ServiceNow) come through as the right accent.
+    Both are skipped in safe mode, like every other piece of the toolkit's own
+    drawing.
+
+
+-------------------------------------------------------------------------------
+4. CHANGES TO AdminConsole.ps1  (applied to BOTH the themed copy and main)
+-------------------------------------------------------------------------------
+    These are the "headings buried under buttons / everything overlapping /
+    not enough space" fixes. They are self-contained: they only call
+    Get-ThemeUiFont, which already exists in the original Common.ps1, so they
+    work in the main folder with no theming support.
+
+4.1 ROOT CAUSE
+    The headings were not being covered by anything -- each heading label was
+    CLIPPING ITS OWN TEXT. Every section heading was built as a fixed 20px box
+    with the panel hardcoded 22px below it:
+
+        $lbl.Size = New-Object System.Drawing.Size($script:PanelW, 20)
+        $flow.Location = New-Object System.Drawing.Point(12, ($y + 22))
+
+    Nothing ever sized that box from the text it had to hold. The theme
+    re-faces every label after the form is built, the accent pass then makes
+    the headings BOLD, and Update-ConsoleZoom scales the heading FONT by the
+    zoom factor (and scales the 22px offset with it) but never touches the
+    label's Height. Measured on a 192dpi session: Height = 20, text needed 47.
+    A WinForms Label clips at its bounds, so what was on screen was the top
+    third of every heading -- which reads exactly like the panel below had been
+    drawn over it.
+
+    This was PRE-EXISTING, not caused by the theming. Confirmed by capturing
+    the untouched original: it clips all six headings identically.
+
+4.2 New shared metrics (one definition, four consumers)
+        $script:SecHeadPad   = 6    leading under the heading text
+        $script:SecHeadGap   = 6    heading box -> panel top
+        $script:SecAfter     = 14   panel bottom -> next heading (was 8)
+        $script:SecHeadRes   = 30   design-space reserve for the zoom fit;
+                                    overwritten with the measured value by the
+                                    build loop
+        $script:SecHeadSlack = 6    per-section slack for the zoom fit only
+
+4.3 Set-SectionHeadBox  (new)
+    Sizes a heading label from its own text and returns the height.
+      - Measured with 'Xg', not the section name, so every heading gets the
+        same box whether or not its name has a descender and the cards line up
+        across sections.
+      - Measured in the face THE THEME WILL APPLY (Get-ThemeUiFont, Bold), not
+        the face the label currently has. This is what lets the whole fix be a
+        single pass: the build loop runs before Set-ConsoleTheme has re-faced
+        anything and before the accent pass made the headings bold, so
+        measuring the current font would size every box for a face it is about
+        to stop using.
+      - The factor scales only the padding. The font size is already whatever
+        the zoom left it, so the measurement needs no further adjustment --
+        scaling it again is what produced a 20px box for 47px of text.
+
+4.4 Get-SectionHeadOffset  (new)
+    The heading box plus the gap under it, i.e. heading top -> panel top.
+    Replaces the hardcoded 22 everywhere.
+
+4.5 Expand-LabelToFont  (new)
+    Grow-only height fix for the version footer, which was the same bug in a
+    different control: built as an 18px box for its 8pt face, then re-faced by
+    the theme and scaled by the zoom to 10.5pt needing 28px. AutoSize is not an
+    option there because it needs a fixed width for AutoEllipsis to truncate a
+    long manifest line. Grow-only so it cannot fight the zoom's own bounds
+    scaling on alternate passes.
+
+4.6 The four stacking sites, all now measured
+    a) Build loop
+         panel at  y + headOff        (was y + 22)
+         y      += headOff + panelH + SecAfter   (was 22 + panelH + 8)
+         also publishes the measured design offset into $script:SecHeadRes
+    b) Update-ConsoleSearch  (the canonical re-stacker: search and folding)
+         headOff measured per section
+         folded:  y += headOff + 6    (was 22 + 6)
+         panel at y + headOff         (was y + 22)
+         y      += headOff + panelH + SecAfter   (was 22 + panelH + 8)
+         Expand-LabelToFont on the version label
+    c) Update-ConsoleZoom
+         headOff measured with the zoom factor
+         panel at y + headOff         (was y + round(22 * f))
+         y      += headOff + panelH + round(SecAfter * f)
+         Expand-LabelToFont AFTER the Tops pass has scaled bounds, or that pass
+         puts the too-small height straight back
+    d) Get-ConsoleZoomFit
+         reserve ceil(SecHeadRes * f) + SecHeadSlack + panel + SecAfter * f
+                                        (was 22 * f + panel + 8 * f)
+
+4.7 Why the zoom fit needs slack
+    Scaling a font does not scale its pixel height linearly -- it rounds up.
+    Reserved 44 * 1.3 = 57, actual measured 61. Four pixels per section, six
+    sections, and the version footer ended up under the status strip. Same trap
+    the file already documents where $fTop is worked out: fonts and bounds do
+    not scale in step. Over-reserving costs a hair of zoom; under-reserving
+    costs the bottom of the window.
+
+4.8 Change in total size
+    Taller headings and the larger inter-section gap add roughly 210px of
+    content. The zoom fit absorbs this by choosing a slightly smaller factor,
+    which is why the result fits BETTER than before rather than worse (see
+    section 6).
+
+
+-------------------------------------------------------------------------------
+5. THINGS THAT WERE TRIED AND REJECTED (recorded so they are not retried)
+-------------------------------------------------------------------------------
+
+5.1 Re-stacking the sections after the theme, via Update-ConsoleSearch
+    The obvious fix for "the heading boxes were sized for the wrong font" is to
+    re-stack once the theme has run. It BROKE THE CONSOLE: every section panel
+    ended up hidden, the window collapsed to 761px and the zoom factor ran away
+    to 3.0 against a fit that wanted 1.2. Update-ConsoleSearch is not a pure
+    layout pass -- it also decides Visible for every button, and running it
+    early, before Update-CapabilityState and in a half-initialised state, makes
+    those decisions against the wrong inputs.
+    Resolution: measure the face the theme WILL use instead, so nothing needs
+    re-stacking. A note to this effect is left in the code where the accent
+    loop ends.
+
+5.2 A flat 30px heading reserve in the zoom fit
+    Fine for the old 20px box, far too small for a measured one. Put a
+    scrollbar back and pushed the footer under the status strip. Replaced with
+    the measured value plus documented slack (4.7).
+
+5.3 Forcing every window maximised
+    Rejected before starting, for the reason in 3.10.
+
+5.4 An incorrect comment of my own
+    The first version of the note on the global animation net claimed it never
+    shadows the library's real animator. That was wrong and was only caught by
+    testing it: Get-Command -All reports exactly one visible definition. The
+    comment has been corrected in the file to say so plainly.
+
+5.5 Operator error during cleanup, recorded for completeness
+    A "_*" wildcard used to delete my own temporary harness files also deleted
+    the toolkit's _READ-ME-FIRST. It was restored from the original and the
+    hash verified identical. Later cleanups deleted files by exact name only.
+
+
+-------------------------------------------------------------------------------
+6. VERIFICATION
+-------------------------------------------------------------------------------
+    All GUI checks were done by rendering the real window to a PNG (the
+    technique the PS_Scripts AGENTS.md describes: substitute ShowDialog for
+    Show plus DrawToBitmap) and by measuring control geometry at runtime. All
+    harness files were deleted afterwards.
+
+6.1 Main folder A/B, original theme, same machine and session
+        pristine : zoom 1.45, content 34px OVER the window, scrollbar,
+                   6 of 6 headings clipped
+        fixed    : zoom 1.25, 0 overflow, no scrollbar,
+                   0 headings clipped
+    So the fix is strictly better: headings readable AND content now fits.
+
+6.2 Themed copy
+        headings clipped 0, headings overlapping panels 0
+        version footer fits its text and clears the status strip
+        no scrollbar, zoom 1.25
+        re-checked across: startup, search filter, section folded, unfolded
+
+6.3 Animation timer
+        timer after theming .................. null
+        timer after a real MouseEnter ........ null (no zombie possible)
+        hover state .......................... 1 on enter, 0 on leave
+        owner-drawn tile ..................... skipped correctly
+
+6.4 Orphaned timer, end to end
+    A test "tool" loaded the library in its own scope, armed a genuine
+    animation timer (Enabled = True), and its scope was then destroyed.
+    1.2 seconds of message pumping produced 0 errors. Without the net this is
+    the CommandNotFoundException dialog.
+
+6.5 Scope of change, proven by diff rather than asserted
+    AdminConsole.ps1: 184 lines added, 9 removed. All 9 removed lines are
+    hardcoded geometry offsets. No Visible logic, no event handler and no tool
+    logic was touched.
+
+6.6 Both files parse cleanly. Lib\ re-verified byte-identical to PS_Scripts.
+
+
+-------------------------------------------------------------------------------
+7. OUTSTANDING / THINGS TO BE AWARE OF
+-------------------------------------------------------------------------------
+
+7.1 Integrity manifest
+    The themed copy reports "2 modified, 1 extra" (Common.ps1, AdminConsole.ps1,
+    and the Lib folder). The main folder reports "1 modified"
+    (AdminConsole.ps1). Re-stamping means running Publish-Toolkit.ps1, whose
+    own header warns "RUN THIS ON THE MASTER COPY ONLY" and which also
+    publishes as well as stamping. It was NOT run -- that decision is the
+    owner's.
+
+7.2 The themed copy writes to the MAIN install's folders
+    Config\Settings.json carries ABSOLUTE paths:
+        ReportsPath : X:\Messaging\Devin\AdminConsole\Reports
+        LogPath     : X:\Messaging\Devin\AdminConsole\Logs
+    So the themed console's logs and reports land in the main AdminConsole
+    folders. This is why an error dialog raised by the themed console named a
+    log file under the main folder. It may well be what is wanted (one place
+    for reports); if not, repoint those two values.
+
+7.3 A latent bug in the SHARED PS_Scripts library, left unfixed
+    Get-Gui3DPalette -AsHex is broken under Windows PowerShell 5.1. The palette
+    is an [ordered] hashtable -- an OrderedDictionary, which has no Clone()
+    method -- so the call raises MethodNotFound. Because that error is NOT
+    terminating, the 'return' never runs and execution falls through to the
+    next line, which returns the System.Drawing.Color palette instead. The
+    function therefore hands back Colors where the caller asked for hex
+    strings, silently.
+    Impact when it bit here: ConvertTo-ThemeColor takes a [string], a Color
+    stringifies to "Color [A=255, R=240, ...]", that parses as nothing, and
+    every colour came back $null -- which Set-ConsoleTheme treats as "no theme"
+    and skips. The window still looked nearly right because the Gui3D pass
+    paints from its own palette regardless, which is what made it hard to spot.
+    What was actually lost was everything only the first pass does: grid cell
+    and header styles, the themed message dialogs, NoTheme-aware colouring.
+    Worked around here by building the hex strings from the Color palette
+    instead of calling -AsHex. The library itself was left alone, as instructed.
+    RECOMMEND fixing it at source in Z:\IHTESHAM\PS_Scripts\Lib\Gui3DTheme.ps1
+    (e.g. build a new dictionary instead of calling .Clone()).
+
+7.4 Pre-existing behaviour NOT changed
+    Update-ConsoleSearch resets Visible on every ungrouped button, which
+    interacts with the capability-hiding done by Update-CapabilityState. This
+    is untouched original behaviour and is the reason the post-theme re-stack
+    in 5.1 could not be used.
+
+7.5 Exchange-Menu-GUI could not be copied literally
+    Exchange-Menu-GUI.ps1 is WPF (Card borders, ScrollViewer, tabs). The Admin
+    Console is WinForms with absolute coordinates. Its visual GRAMMAR was
+    copied -- titled groups, real padding, clear separation, one light palette
+    -- not its implementation. Turning the section bands into true cards
+    (white rounded panels with the title inside a raised header) is a further
+    change; the Gui3D library already renders a GroupBox that way if wanted.
+
+7.6 After updating, restart cleanly
+    A PowerShell process that already ran the pre-fix themed console still has
+    an armed orphan timer and the old definitions in memory. The safety net
+    protects sessions that LOAD the fixed file; an already-running process has
+    to exit. Close every console window and any PowerShell session that ran it.
+
+
+-------------------------------------------------------------------------------
+8. WHAT WAS DELIBERATELY NOT CHANGED
+-------------------------------------------------------------------------------
+    - Z:\IHTESHAM\PS_Scripts -- nothing at all.
+    - The 119 other tool scripts in the themed copy -- byte-identical.
+    - Any tool's logic, in either folder. Only presentation and geometry.
+    - The main folder's Common.ps1 -- still original, no Gui3D.
+    - Lib\*.ps1 -- byte-identical copies of the shared library, not a fork.
+    - Config\Themes.json and ThemeManager.ps1 -- left in place. Theme Manager
+      still opens and its previews still read the file honestly; the colours it
+      offers are simply no longer consulted for the active look.
+
+===============================================================================
+END OF RECORD
+===============================================================================

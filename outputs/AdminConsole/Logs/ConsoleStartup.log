@@ -1,0 +1,209 @@
+﻿       at System.Management.Automation.ScriptBlock.InvokeAsDelegateHelper(Object dollarUnder, Object dollarThis, Object[] args)
+       at System.Windows.Forms.Control.OnClick(EventArgs e)
+       at System.Windows.Forms.Button.OnClick(EventArgs e)
+       at System.Windows.Forms.Button.OnMouseUp(MouseEventArgs mevent)
+       at System.Windows.Forms.Control.WmMouseUp(Message& m, MouseButtons button, Int32 clicks)
+       at System.Windows.Forms.Control.WndProc(Message& m)
+       at System.Windows.Forms.ButtonBase.WndProc(Message& m)
+       at System.Windows.Forms.Button.WndProc(Message& m)
+       at System.Windows.Forms.NativeWindow.Callback(IntPtr hWnd, Int32 msg, IntPtr wparam, IntPtr lparam)
+2026-09-11 16:25:51  pid 10424  UI THREAD: System.Management.Automation.ParameterBindingValidationException: Cannot bind argument to parameter 'Shell' because it is null.
+       at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)
+       at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)
+       at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+       at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+       at System.Management.Automation.Interpreter.Interpreter.Run(InterpretedFrame frame)
+       at System.Management.Automation.Interpreter.LightLambda.RunVoid1[T0](T0 arg0)
+       at System.Management.Automation.ScriptBlock.InvokeWithPipeImpl(ScriptBlockClauseToInvoke clauseToInvoke, Boolean createLocalScope, Dictionary`2 functionsToDefine, List`1 variablesToDefine, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Object[] args)
+       at System.Management.Automation.ScriptBlock.<>c__DisplayClass57_0.<InvokeWithPipe>b__0()
+       at System.Management.Automation.Runspaces.RunspaceBase.RunActionIfNoRunningPipelinesWithThreadCheck(Action action)
+       at System.Management.Automation.ScriptBlock.InvokeWithPipe(Boolean useLocalScope, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Boolean propagateAllExceptionsToTop, List`1 variablesToDefine, Dictionary`2 functionsToDefine, Object[] args)
+       at System.Management.Automation.ScriptBlock.InvokeAsDelegateHelper(Object dollarUnder, Object dollarThis, Object[] args)
+       at System.Windows.Forms.Control.OnClick(EventArgs e)
+       at System.Windows.Forms.Button.OnClick(EventArgs e)
+       at System.Windows.Forms.Button.OnMouseUp(MouseEventArgs mevent)
+       at System.Windows.Forms.Control.WmMouseUp(Message& m, MouseButtons button, Int32 clicks)
+       at System.Windows.Forms.Control.WndProc(Message& m)
+       at System.Windows.Forms.ButtonBase.WndProc(Message& m)
+       at System.Windows.Forms.Button.WndProc(Message& m)
+       at System.Windows.Forms.NativeWindow.Callback(IntPtr hWnd, Int32 msg, IntPtr wparam, IntPtr lparam)
+2026-09-11 16:25:53  pid 10424  UI THREAD: System.Management.Automation.ParameterBindingValidationException: Cannot bind argument to parameter 'Shell' because it is null.
+       at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)
+       at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)
+       at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+       at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+       at System.Management.Automation.Interpreter.Interpreter.Run(InterpretedFrame frame)
+       at System.Management.Automation.Interpreter.LightLambda.RunVoid1[T0](T0 arg0)
+       at System.Management.Automation.ScriptBlock.InvokeWithPipeImpl(ScriptBlockClauseToInvoke clauseToInvoke, Boolean createLocalScope, Dictionary`2 functionsToDefine, List`1 variablesToDefine, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Object[] args)
+       at System.Management.Automation.ScriptBlock.<>c__DisplayClass57_0.<InvokeWithPipe>b__0()
+       at System.Management.Automation.Runspaces.RunspaceBase.RunActionIfNoRunningPipelinesWithThreadCheck(Action action)
+       at System.Management.Automation.ScriptBlock.InvokeWithPipe(Boolean useLocalScope, ErrorHandlingBehavior errorHandlingBehavior, Object dollarUnder, Object input, Object scriptThis, Pipe outputPipe, InvocationInfo invocationInfo, Boolean propagateAllExceptionsToTop, List`1 variablesToDefine, Dictionary`2 functionsToDefine, Object[] args)
+       at System.Management.Automation.ScriptBlock.InvokeAsDelegateHelper(Object dollarUnder, Object dollarThis, Object[] args)
+       at System.Windows.Forms.Control.OnClick(EventArgs e)
+       at System.Windows.Forms.Button.OnClick(EventArgs e)
+       at System.Windows.Forms.Button.OnMouseUp(MouseEventArgs mevent)
+       at System.Windows.Forms.Control.WmMouseUp(Message& m, MouseButtons button, Int32 clicks)
+       at System.Windows.Forms.Control.WndProc(Message& m)
+       at System.Windows.Forms.ButtonBase.WndProc(Message& m)
+       at System.Windows.Forms.Button.WndProc(Message& m)
+       at System.Windows.Forms.NativeWindow.Callback(IntPtr hWnd, Int32 msg, IntPtr wparam, IntPtr lparam)
+2026-09-11 16:28:24  pid 10424  ShowDialog returned (window closed)
+2026-09-11 16:28:24  pid 10424  console session marker cleared
+2026-09-11 16:28:26  pid 10424  --- launch ---
+2026-09-11 16:28:26  pid 10424  WinForms assemblies loaded
+2026-09-11 16:28:26  pid 10424  Common.ps1 dot-sourced in 12 ms
+2026-09-11 16:28:26  pid 10424  console session marker set
+2026-09-11 16:28:28  pid 10424  about to ShowDialog
+2026-09-11 16:28:28  pid 10424  form Shown -- laying out panels
+2026-09-11 16:28:28  pid 10424  panels laid out
+2026-09-11 16:28:29  pid 10424  initial fit: 0 widening step(s), client 1180x1130, scroll=False
+2026-09-11 16:28:29  pid 10424  initial fit: 0 widening step(s), client 1180x992, scroll=False
+2026-09-11 16:31:23  pid 10424  ShowDialog returned (window closed)
+2026-09-11 16:31:23  pid 10424  console session marker cleared
+2026-09-11 16:31:29  pid 10424  --- launch ---
+2026-09-11 16:31:29  pid 10424  WinForms assemblies loaded
+2026-09-11 16:31:29  pid 10424  Common.ps1 dot-sourced in 12 ms
+2026-09-11 16:31:29  pid 10424  console session marker set
+2026-09-11 16:31:31  pid 10424  about to ShowDialog
+2026-09-11 16:31:31  pid 10424  form Shown -- laying out panels
+2026-09-11 16:31:31  pid 10424  panels laid out
+2026-09-11 16:31:32  pid 10424  initial fit: 1 widening step(s), client 1016x1136, scroll=False
+2026-09-11 16:31:32  pid 10424  initial fit: 0 widening step(s), client 1016x1136, scroll=False
+2026-09-11 16:33:32  pid 10424  ShowDialog returned (window closed)
+2026-09-11 16:33:32  pid 10424  console session marker cleared
+2026-09-11 16:35:34  pid 10424  --- launch ---
+2026-09-11 16:35:34  pid 10424  WinForms assemblies loaded
+2026-09-11 16:35:34  pid 10424  Common.ps1 dot-sourced in 10 ms
+2026-09-11 16:35:34  pid 10424  console session marker set
+2026-09-11 16:35:36  pid 10424  about to ShowDialog
+2026-09-11 16:39:07  pid 10424  ShowDialog returned (window closed)
+2026-09-11 16:39:07  pid 10424  console session marker cleared
+2026-09-11 16:43:48  pid 10424  --- launch ---
+2026-09-11 16:43:48  pid 10424  WinForms assemblies loaded
+2026-09-11 16:43:48  pid 10424  Common.ps1 dot-sourced in 84 ms
+2026-09-11 16:43:48  pid 10424  console session marker set
+2026-09-11 16:43:53  pid 10424  about to ShowDialog
+2026-09-11 16:44:40  pid 10424  ShowDialog returned (window closed)
+2026-09-11 16:44:40  pid 10424  console session marker cleared
+2026-09-11 16:44:42  pid 10424  --- launch ---
+2026-09-11 16:44:42  pid 10424  WinForms assemblies loaded
+2026-09-11 16:44:42  pid 10424  Common.ps1 dot-sourced in 11 ms
+2026-09-11 16:44:42  pid 10424  console session marker set
+2026-09-11 16:44:45  pid 10424  about to ShowDialog
+2026-09-11 16:44:45  pid 10424  form Shown -- laying out panels
+2026-09-11 16:44:45  pid 10424  panels laid out
+2026-09-11 16:44:45  pid 10424  initial fit: 0 widening step(s), client 1180x1130, scroll=False
+2026-09-11 16:44:45  pid 10424  initial fit: 0 widening step(s), client 1180x992, scroll=False
+2026-09-11 16:45:49  pid 10424  ShowDialog returned (window closed)
+2026-09-11 16:45:49  pid 10424  console session marker cleared
+2026-09-11 16:46:15  pid 10424  --- launch ---
+2026-09-11 16:46:15  pid 10424  WinForms assemblies loaded
+2026-09-11 16:46:18  pid 10424  FAILED at: dot-sourcing Common.ps1
+2026-09-11 16:46:18  pid 10424      System.Management.Automation.PSSecurityException: File E:\scripts\m365\adminconsole\Common.ps1 cannot be loaded because you opted not to run this software now.
+2026-09-11 16:46:18  pid 10424      at <ScriptBlock>, E:\scripts\m365\adminconsole\AdminConsole.ps1: line 253
+2026-09-11 16:46:18  pid 10424      at <ScriptBlock>, E:\scripts\m365\adminconsole\AdminConsole.ps1: line 166
+2026-09-11 16:46:18  pid 10424      at <ScriptBlock>, <No file>: line 1
+2026-09-11 16:46:27  pid 10424  --- launch ---
+2026-09-11 16:46:27  pid 10424  WinForms assemblies loaded
+2026-09-11 16:46:27  pid 10424  Common.ps1 dot-sourced in 11 ms
+2026-09-11 16:46:27  pid 10424  console session marker set
+2026-09-11 16:46:29  pid 10424  about to ShowDialog
+2026-09-11 16:46:30  pid 10424  form Shown -- laying out panels
+2026-09-11 16:46:30  pid 10424  panels laid out
+2026-09-11 16:46:30  pid 10424  initial fit: 0 widening step(s), client 1180x1130, scroll=False
+2026-09-11 16:46:30  pid 10424  initial fit: 0 widening step(s), client 1180x992, scroll=False
+2026-09-11 16:53:07  pid 10424  ShowDialog returned (window closed)
+2026-09-11 16:53:07  pid 10424  console session marker cleared
+2026-09-11 16:53:10  pid 10424  --- launch ---
+2026-09-11 16:53:10  pid 10424  WinForms assemblies loaded
+2026-09-11 16:53:10  pid 10424  Common.ps1 dot-sourced in 14 ms
+2026-09-11 16:53:10  pid 10424  console session marker set
+2026-09-11 16:53:13  pid 10424  about to ShowDialog
+2026-09-11 16:53:13  pid 10424  form Shown -- laying out panels
+2026-09-11 16:53:13  pid 10424  panels laid out
+2026-09-11 16:53:13  pid 10424  initial fit: 0 widening step(s), client 1390x1130, scroll=False
+2026-09-11 16:53:14  pid 10424  initial fit: 0 widening step(s), client 1390x992, scroll=False
+2026-09-11 16:54:42  pid 10424  ShowDialog returned (window closed)
+2026-09-11 16:54:42  pid 10424  console session marker cleared
+2026-09-11 16:54:44  pid 10424  --- launch ---
+2026-09-11 16:54:44  pid 10424  WinForms assemblies loaded
+2026-09-11 16:54:44  pid 10424  Common.ps1 dot-sourced in 26 ms
+2026-09-11 16:54:44  pid 10424  console session marker set
+2026-09-11 16:54:47  pid 10424  about to ShowDialog
+2026-09-11 16:54:47  pid 10424  form Shown -- laying out panels
+2026-09-11 16:54:47  pid 10424  panels laid out
+2026-09-11 16:54:47  pid 10424  initial fit: 0 widening step(s), client 1180x1130, scroll=False
+2026-09-11 16:54:48  pid 10424  initial fit: 0 widening step(s), client 1180x992, scroll=False
+2026-09-11 16:57:12  pid 10424  ShowDialog returned (window closed)
+2026-09-11 16:57:12  pid 10424  console session marker cleared
+2026-09-11 16:58:11  pid 10424  --- launch ---
+2026-09-11 16:58:11  pid 10424  WinForms assemblies loaded
+2026-09-11 16:58:11  pid 10424  Common.ps1 dot-sourced in 11 ms
+2026-09-11 16:58:11  pid 10424  console session marker set
+2026-09-11 16:58:14  pid 10424  about to ShowDialog
+2026-09-11 16:58:15  pid 10424  form Shown -- laying out panels
+2026-09-11 16:58:15  pid 10424  panels laid out
+2026-09-11 16:58:15  pid 10424  initial fit: 0 widening step(s), client 1180x1130, scroll=False
+2026-09-11 16:58:15  pid 10424  initial fit: 0 widening step(s), client 1180x992, scroll=False
+2026-09-11 17:02:25  pid 10424  ShowDialog returned (window closed)
+2026-09-11 17:02:25  pid 10424  console session marker cleared
+2026-09-11 17:05:35  pid 10424  --- launch ---
+2026-09-11 17:05:35  pid 10424  WinForms assemblies loaded
+2026-09-11 17:05:35  pid 10424  Common.ps1 dot-sourced in 11 ms
+2026-09-11 17:05:35  pid 10424  console session marker set
+2026-09-11 17:05:39  pid 10424  about to ShowDialog
+2026-09-11 17:06:08  pid 10424  ShowDialog returned (window closed)
+2026-09-11 17:06:08  pid 10424  console session marker cleared
+2026-09-11 17:06:10  pid 10424  --- launch ---
+2026-09-11 17:06:10  pid 10424  WinForms assemblies loaded
+2026-09-11 17:06:10  pid 10424  Common.ps1 dot-sourced in 11 ms
+2026-09-11 17:06:10  pid 10424  console session marker set
+2026-09-11 17:06:13  pid 10424  about to ShowDialog
+2026-09-11 17:06:13  pid 10424  form Shown -- laying out panels
+2026-09-11 17:06:13  pid 10424  panels laid out
+2026-09-11 17:06:13  pid 10424  initial fit: 0 widening step(s), client 1180x1130, scroll=False
+2026-09-11 17:06:14  pid 10424  initial fit: 0 widening step(s), client 1180x992, scroll=False
+2026-09-12 14:30:18  pid 10424  ShowDialog returned (window closed)
+2026-09-12 14:30:18  pid 10424  console session marker cleared
+2026-09-12 22:30:14  pid 12056  --- launch ---
+2026-09-12 22:30:14  pid 12056  WinForms assemblies loaded
+2026-09-12 22:30:14  pid 12056  Common.ps1 dot-sourced in 16 ms
+2026-09-12 22:30:14  pid 12056  console session marker set
+2026-09-12 22:30:22  pid 12056  about to ShowDialog
+2026-09-12 22:30:22  pid 12056  form Shown -- laying out panels
+2026-09-12 22:30:22  pid 12056  panels laid out
+2026-09-12 22:30:23  pid 12056  initial fit: 0 widening step(s), client 1180x1130, scroll=True
+2026-09-12 22:30:24  pid 12056  initial fit: 0 widening step(s), client 1197x1130, scroll=True
+2026-09-12 22:31:54  pid 12056  ShowDialog returned (window closed)
+2026-09-12 22:31:54  pid 12056  console session marker cleared
+2026-09-12 22:31:57  pid 12056  --- launch ---
+2026-09-12 22:31:57  pid 12056  WinForms assemblies loaded
+2026-09-12 22:31:57  pid 12056  Common.ps1 dot-sourced in 15 ms
+2026-09-12 22:31:57  pid 12056  console session marker set
+2026-09-12 22:31:59  pid 12056  about to ShowDialog
+2026-09-12 22:32:00  pid 12056  form Shown -- laying out panels
+2026-09-12 22:32:00  pid 12056  panels laid out
+2026-09-12 22:32:00  pid 12056  initial fit: 0 widening step(s), client 1372x1130, scroll=False
+2026-09-12 22:32:00  pid 12056  initial fit: 0 widening step(s), client 1372x1130, scroll=False
+2026-09-12 22:34:36  pid 12056  ShowDialog returned (window closed)
+2026-09-12 22:34:36  pid 12056  console session marker cleared
+2026-09-12 22:39:11  pid 12056  --- launch ---
+2026-09-12 22:39:11  pid 12056  WinForms assemblies loaded
+2026-09-12 22:39:11  pid 12056  Common.ps1 dot-sourced in 14 ms
+2026-09-12 22:39:11  pid 12056  console session marker set
+2026-09-12 22:39:14  pid 12056  about to ShowDialog
+2026-09-12 22:39:14  pid 12056  form Shown -- laying out panels
+2026-09-12 22:39:14  pid 12056  panels laid out
+2026-09-12 22:39:14  pid 12056  initial fit: 0 widening step(s), client 1372x1130, scroll=False
+2026-09-12 22:39:15  pid 12056  initial fit: 0 widening step(s), client 1372x1130, scroll=False
+2026-09-12 23:15:29  pid 12056  ShowDialog returned (window closed)
+2026-09-12 23:15:29  pid 12056  console session marker cleared
+2026-09-12 23:18:38  pid 12056  --- launch ---
+2026-09-12 23:18:38  pid 12056  WinForms assemblies loaded
+2026-09-12 23:18:38  pid 12056  Common.ps1 dot-sourced in 12 ms
+2026-09-12 23:18:38  pid 12056  console session marker set
+2026-09-12 23:18:42  pid 12056  about to ShowDialog
+2026-09-12 23:18:42  pid 12056  form Shown -- laying out panels
+2026-09-12 23:18:42  pid 12056  panels laid out
+2026-09-12 23:18:42  pid 12056  initial fit: 1 widening step(s), client 1343x1124, scroll=False
+2026-09-12 23:18:43  pid 12056  initial fit: 0 widening step(s), client 1343x1124, scroll=False

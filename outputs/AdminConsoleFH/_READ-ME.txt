@@ -1,0 +1,14 @@
+AdminConsoleFH  --  site-only scripts for the First Horizon install
+====================================================================
+
+Since 2026-09-17 this folder holds ONLY the scripts that belong to that
+install alone (suppliers, tracing, bulk jobs) plus its markdown\ docs.
+
+It is NOT a copy of the toolkit. All shared code -- the console, Common.ps1,
+the views, every shared tool -- lives once, in ..\AdminConsole, and is
+staged for this install through ..\shipFH\ (.txt appended).
+
+A script that also exists in ..\AdminConsole does not belong here.
+..\AdminConsole\Compare-Toolkit.ps1 -Other ..\AdminConsoleFH reports any.
+
+The full mirror this replaced is kept under ..\undo\ for reference.

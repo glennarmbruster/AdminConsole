@@ -1,0 +1,54 @@
+﻿PARK LIST -- scripts made redundant by the Mailbox, Room, Group and Person Editors and Unified Lookup
+2026-09-20   25 scripts, alphabetical
+
+Automap-Fix.ps1 is NOT on this list. It stays until the Mailbox Editor's new
+Automap Fix tab has been used in anger.
+
+Each name is followed by where the job now lives.
+
+  AD-Lookup.ps1             Unified Lookup (searches AD always; Attributes opens the shared AD / Cloud / Mail editor)
+  AuditSMB.ps1              Audit.ps1 -- Audit SMB tab (FreeText search plus the Full Access holder list)
+  AuditUser.ps1             Audit.ps1 -- Audit Mailbox tab (UserIds search)
+  CalendarPermissions.ps1   Mailbox Editor -- Folder Permissions tab
+  CalendarProcessing.ps1    Room Editor -- Booking tab
+  ConvertMailboxType.ps1    Mailbox Editor -- Overview, Type (converts both sides)
+  DLMemberships.ps1         Person Editor -- Groups tab (and can add/remove, which this could not)
+  EnableArchive.ps1         Mailbox Editor -- Overview, Archive
+  ForwardingEditor.ps1      Mailbox Editor -- Mail Flow tab
+  Group-Manager-Editor.ps1  Group Editor
+  Group-Manager.ps1         Group Editor
+  GroupEditor.ps1           Group Editor (Microsoft 365 groups)
+  Hide-Unhide.ps1           Mailbox Editor -- Overview, hide from address book
+  HoldRetention.ps1         Mailbox Editor -- Retention tab
+  InboxRules.ps1            Mailbox Editor -- Inbox Rules tab
+  MailboxHealth.ps1         Mailbox Editor -- Health tab
+  MailboxPermissions.ps1    Mailbox Editor -- Access tab
+  MBX-Stats.ps1             Mailbox Editor -- Statistics tab (folders biggest first, Recoverable Items, archive on a button); size and quota on Overview
+  OOFEditor.ps1             Mailbox Editor -- Automatic Replies tab (the editor itself lives in Common.ps1)
+  RecoverDeletedItems.ps1   Mailbox Editor -- Recover Items tab (Deleted Items, Recoverable and Purges, each row labelled with which; plus From/To and days-until-purge, which the standalone had not)
+  Retention-Policy.ps1      Mailbox Editor -- Retention tab
+  RoomPlace.ps1             Room Editor -- Place tab
+  RoomRegional.ps1          Room Editor -- Regional tab
+  Set-BookingPolicy.ps1     Room Editor -- Booking tab
+  UserDefinedDelegates.ps1  Mailbox Editor -- Folder Permissions tab (delegates)
+
+CHECKED BEFORE LISTING: every other .ps1 in the folder was searched for each
+name. Every remaining mention is a comment or docstring. Three dead hand-off
+rows in Unified-Lookup.ps1 (Group-Manager-Editor x2, GroupEditor x1) that the
+Group Editor rows above them had already made unreachable were removed, and
+two comments describing AD-Lookup as a live destination were corrected, so
+the parked files are referenced nowhere that runs.
+
+MBX-Stats: an earlier note said it could run New-MailboxRepairRequest. It
+cannot -- the cmdlet appears only in a line of advice text. It is read-only
+and the Statistics tab covers it.
+
+YOUR CALL, NOT LISTED:
+  RoomList.ps1    membership is in the Room Editor; CREATING a room list is a
+                  tenant-wide object with no home in a per-room window.
+
+STAY (not redundant): MailboxOneDriveAccess, MailboxPermDupe, RestoreMailbox,
+ManageOwnerGroups, ResourceDuplicator, CalendarReset, Protocols, and
+QuarantineManager -- tenant-wide search by sender/subject, header preview,
+false-positive report and delete; the Mailbox Editor's Quarantine tab is one
+recipient's view and releases only.

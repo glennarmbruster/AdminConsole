@@ -1,0 +1,123 @@
+﻿{
+  "_comment": [
+    "TENANT FACTS. This is the only file in the toolkit permitted to contain a",
+    "domain name, a server name, or an organisation's internal vocabulary.",
+    "Everything else reads from here. If a tenant name appears in a .ps1 file,",
+    "that is a bug -- Test-Toolkit checks for it.",
+    "",
+    "Engineer preferences (paths, browser profiles) live in Settings.json, not",
+    "here. This file is the same on every machine at a tenant; that one is not."
+  ],
+  "TenantName": "",
+  "PrimaryDomain": "",
+  "OnMicrosoftDomain": "",
+  "Capabilities": {
+    "ExchangeOnline": true,
+    "SharePointOnline": true,
+    "OnPremAD": false,
+    "OnPremExchange": false,
+    "Pim": false,
+    "PimTimer": false,
+    "MicrosoftGraph": false
+  },
+  "Directories": [],
+  "OnPremExchange": {
+    "ServerUri": "",
+    "PreferredDomainController": "",
+    "_comment": [
+      "Servers is the on-premises Exchange server list. Site and Role are DECLARED,",
+      "never derived from the name: Role is Mailbox or Edge, and Site is any",
+      "label you like -- it only has to be the SAME for servers that must not",
+      "reboot at the same time. A bare list of names still loads, but those",
+      "servers cannot be rebooted until they have a Site and a Role.",
+      "ExcludedServers are shown greyed with the reason, never ticked.",
+      "ConnectionServers (optional): the Mailbox servers a tool may open its",
+      "remote Exchange shell through, used VERBATIM when present. Leave it out and",
+      "the tool derives the list from Servers. Set it to reproduce exactly the",
+      "connection behaviour of a script that named its connection servers itself."
+    ],
+    "Servers": [
+      {
+        "Name": "SERVER01",
+        "Site": "SiteA",
+        "Role": "Mailbox"
+      },
+      {
+        "Name": "SERVER02",
+        "Site": "SiteA",
+        "Role": "Mailbox"
+      },
+      {
+        "Name": "SERVER03",
+        "Site": "SiteB",
+        "Role": "Edge"
+      }
+    ],
+    "ExcludedServers": [],
+    "ConnectionServers": [
+      "SERVER01",
+      "SERVER02"
+    ]
+  },
+  "Pim": {
+    "DurationHours": 4,
+    "GroupsEligibleUrl": "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadgroup",
+    "RolesEligibleUrl": "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadmigratedroles",
+    "GroupsActiveUrl": "",
+    "RolesActiveUrl": ""
+  },
+  "Graph": {
+    "_comment": [
+      "The tenant's Microsoft Graph application -- ONE app, delegated permissions",
+      "only, no secret. The console signs in through it as the operator; each",
+      "Graph tool declares the scopes it needs in its header",
+      "(# TOOLKIT-GRAPH-SCOPES: ...) and Connect-MSGraph.ps1 asks for the union.",
+      "ClientId is the Application (client) ID of that registration; TenantId is",
+      "the directory (tenant) ID. Both are tenant facts and belong here, never in",
+      "a .ps1. Blank ClientId, or MicrosoftGraph false above, = the Graph tools",
+      "are greyed with 'not present in this tenant'."
+    ],
+    "ClientId": "",
+    "TenantId": ""
+  },
+  "LicenseGroups": [],
+  "FeatureRequest": {
+    "_comment": [
+      "Where the Feature Request tool sends requests. The operator never sees",
+      "this address -- it goes on BCC -- but it is not a secret: it is in a",
+      "config file anyone can open. It lives here rather than in the script",
+      "because Test-Toolkit rejects a mail domain written into a .ps1."
+    ],
+    "Recipient": ""
+  },
+  "ServerHealth": {
+    "_comment": [
+      "Servers the Server Health tool checks: disk, patch level, pending",
+      "updates, reboot state. A WIDER list than OnPremExchange.Servers, which",
+      "means 'servers the Exchange tools may run cmdlets against' -- this one",
+      "includes domain controllers, file servers and anything else worth",
+      "watching.",
+      "",
+      "Exchange true/false is a HINT, not a gate. The check reports Exchange",
+      "wherever it finds it; the flag only decides whether ABSENCE is a",
+      "finding. Notes is free text and is shown nowhere -- it is for whoever",
+      "opens this file next.",
+      "",
+      "Absent means off: no block, no servers, and the tool says so rather",
+      "than reporting a clean estate of nothing. Edit it in Tenant Manager."
+    ],
+    "Servers": []
+  },
+  "SharePoint": {
+    "AdminUrl": "",
+    "MySiteHost": ""
+  },
+  "Theme": "",
+  "_comment_Band": "Colour strip along the top of every window for this tenant, hex. Empty = picked automatically. Multi-tenant only.",
+  "Band": "",
+  "_comment_Parked": "Written by Park In Place on the Dashboard. Scripts hidden from this tenant's console, and whole sections. Leave as is.",
+  "Parked": {
+    "Scripts": [],
+    "Sections": []
+  }
+}

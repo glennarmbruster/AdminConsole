@@ -1,0 +1,35 @@
+﻿{
+    "ButtonsPerRow": 7,
+    "Sections": [
+        {
+            "Name": "Connect",
+            "Rows": 1,
+            "Accent": "#3D9970"
+        },
+        {
+            "Name": "Daily Scripts",
+            "Rows": 3,
+            "Accent": "#2E6BD6"
+        },
+        {
+            "Name": "Mailbox and Access",
+            "Rows": 4,
+            "Accent": "#7B61C4"
+        },
+        {
+            "Name": "Groups and DLs",
+            "Rows": 2,
+            "Accent": "#C4772E"
+        },
+        {
+            "Name": "Reporting",
+            "Rows": 4,
+            "Accent": "#1F9BA8"
+        },
+        {
+            "Name": "Projects",
+            "Rows": 2,
+            "Accent": "#C24E4E"
+        }
+    ]
+}

@@ -1,0 +1,997 @@
+﻿[
+    {
+        "Order": 0,
+        "Name": "Dashboard",
+        "Script": ".\\Dashboard.ps1",
+        "ObjectTypes": [],
+        "Section": "Connect",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 1,
+        "Name": "ExO",
+        "Script": ".\\Connect-ExO.ps1",
+        "ObjectTypes": [],
+        "Section": "Connect",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 2,
+        "Name": "OnPrem",
+        "Script": ".\\Connect-ExSE.ps1",
+        "ObjectTypes": [],
+        "Section": "Connect",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 3,
+        "Name": "SPO",
+        "Script": ".\\Connect-SPO.ps1",
+        "ObjectTypes": [],
+        "Section": "Connect",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 4,
+        "Name": "Connect Security",
+        "Script": ".\\Connect-Security.ps1",
+        "ObjectTypes": [],
+        "Section": "Connect",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 5,
+        "Name": "Connect Teams",
+        "Script": ".\\Connect-Teams.ps1",
+        "ObjectTypes": [],
+        "Section": "Connect",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 6,
+        "Name": "Set PIM Timer",
+        "Script": ".\\Set-PimTimer.ps1",
+        "ObjectTypes": [],
+        "Section": "Connect",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 7,
+        "Name": "Console",
+        "Script": ".\\console.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Connect",
+        "Tier": "Tier3",
+        "NewProcess": false
+    },
+    {
+        "Order": 8,
+        "Name": "Forget API Credentials",
+        "Script": ".\\Forget-ApiCredentials.ps1",
+        "ObjectTypes": [],
+        "Section": "Connect",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 0,
+        "Name": "AD Lookup",
+        "Script": ".\\AD-Lookup.ps1",
+        "ObjectTypes": [],
+        "Section": "Daily Scripts",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 1,
+        "Name": "Blocked Senders",
+        "Script": ".\\BlockedSenders.ps1",
+        "ObjectTypes": [],
+        "Section": "Daily Scripts",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 2,
+        "Name": "Header Analyzer",
+        "Script": ".\\HeaderAnalyzer.ps1",
+        "ObjectTypes": [],
+        "Section": "Daily Scripts",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 3,
+        "Name": "Inbox Rules",
+        "Script": ".\\InboxRules.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Daily Scripts",
+        "Tier": "Tier1",
+        "NewProcess": false
+    },
+    {
+        "Order": 4,
+        "Name": "Mailbox Health",
+        "Script": ".\\MailboxHealth.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Daily Scripts",
+        "Tier": "Tier1",
+        "NewProcess": false
+    },
+    {
+        "Order": 5,
+        "Name": "Manage Mail Object",
+        "Script": ".\\ManageMailObject.ps1",
+        "ObjectTypes": [],
+        "Section": "Daily Scripts",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 6,
+        "Name": "Message Trace",
+        "Script": ".\\MessageTrace.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Daily Scripts",
+        "Tier": "Tier1",
+        "NewProcess": false
+    },
+    {
+        "Order": 7,
+        "Name": "Out of Office",
+        "Script": ".\\OOFEditor.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Daily Scripts",
+        "Tier": "Tier2",
+        "NewProcess": false
+    },
+    {
+        "Order": 8,
+        "Name": "Quick Links",
+        "Script": ".\\QuickLaunch.ps1",
+        "ObjectTypes": [],
+        "Section": "Daily Scripts",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 9,
+        "Name": "Retention Policy",
+        "Script": ".\\Retention-Policy.ps1",
+        "ObjectTypes": [],
+        "Section": "Daily Scripts",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 10,
+        "Name": "Search and Purge",
+        "Script": ".\\Search_Purge.ps1",
+        "ObjectTypes": [],
+        "Section": "Daily Scripts",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 11,
+        "Name": "Unblock Files",
+        "Script": ".\\UnBlock.ps1",
+        "ObjectTypes": [],
+        "Section": "Daily Scripts",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 12,
+        "Name": "Unified Lookup",
+        "Script": ".\\Unified-Lookup.ps1",
+        "ObjectTypes": [],
+        "Section": "Daily Scripts",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 13,
+        "Name": "new OOF",
+        "Script": ".\\new-OOF.ps1",
+        "ObjectTypes": [],
+        "Section": "Daily Scripts",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Name": "Quarantine Manager",
+        "Script": ".\\QuarantineManager.ps1",
+        "Section": "Daily Scripts",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Tier": "Tier2",
+        "NewProcess": false,
+        "Order": 14
+    },
+    {
+        "Name": "Spam Policy Viewer",
+        "Script": ".\\SpamPolicyViewer.ps1",
+        "Section": "Daily Scripts",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Tier": "Tier1",
+        "NewProcess": false,
+        "Order": 15
+    },
+    {
+        "Order": 0,
+        "Name": "All Attributes",
+        "Script": ".\\AllAttributes.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Mailbox and Access",
+        "Tier": "Tier3",
+        "NewProcess": false
+    },
+    {
+        "Order": 1,
+        "Name": "Change Meeting Organizer",
+        "Script": ".\\ChangeMeetingOrganizer.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 2,
+        "Name": "Automap Fix",
+        "Script": ".\\Automap-Fix.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 3,
+        "Name": "Calendar Permissions",
+        "Script": ".\\CalendarPermissions.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Mailbox and Access",
+        "Tier": "Tier2",
+        "NewProcess": false
+    },
+    {
+        "Order": 4,
+        "Name": "Calendar Processing",
+        "Script": ".\\CalendarProcessing.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 5,
+        "Name": "Calendar Reset",
+        "Script": ".\\CalendarReset.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 6,
+        "Name": "Convert Mailbox Type",
+        "Script": ".\\ConvertMailboxType.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 7,
+        "Name": "Enable Archive",
+        "Script": ".\\EnableArchive.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 8,
+        "Name": "External Forwarding",
+        "Script": ".\\ExternalForwarding.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 9,
+        "Name": "External Sharing",
+        "Script": ".\\ExternalSharing.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 10,
+        "Name": "Forwarding Editor",
+        "Script": ".\\ForwardingEditor.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 11,
+        "Name": "Grant External Access",
+        "Script": ".\\Grant-ExternalAccess.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 12,
+        "Name": "Hold Retention",
+        "Script": ".\\HoldRetention.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 13,
+        "Name": "Mail Attributes (Rename)",
+        "Script": ".\\MailAttributes.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Mailbox and Access",
+        "Tier": "Tier3",
+        "NewProcess": false
+    },
+    {
+        "Order": 14,
+        "Name": "Mail Contacts",
+        "Script": ".\\MailContacts.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 15,
+        "Name": "Mailbox / Onedrive Perms",
+        "Script": ".\\MailboxOneDriveAccess.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 16,
+        "Name": "Mailbox Perm Dupe",
+        "Script": ".\\MailboxPermDupe.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 17,
+        "Name": "Mailbox Permissions",
+        "Script": ".\\MailboxPermissions.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Mailbox and Access",
+        "Tier": "Tier2",
+        "NewProcess": false
+    },
+    {
+        "Order": 18,
+        "Name": "Missing Remote Mailbox",
+        "Script": ".\\MissingRemoteMailbox.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 19,
+        "Name": "Mobile Devices",
+        "Script": ".\\MobileDevices.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 20,
+        "Name": "Pim Activation",
+        "Script": ".\\PimActivation.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 21,
+        "Name": "Protocols",
+        "Script": ".\\Protocols.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 22,
+        "Name": "Recover Deleted Items",
+        "Script": ".\\RecoverDeletedItems.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 23,
+        "Name": "Rename User",
+        "Script": ".\\RenameUser.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 24,
+        "Name": "Resource Delegates",
+        "Script": ".\\Resource-Delegates.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 25,
+        "Name": "ResourceDuplicator",
+        "Script": ".\\ResourceDuplicator.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 26,
+        "Name": "Restore Mailbox",
+        "Script": ".\\RestoreMailbox.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 27,
+        "Name": "Room List",
+        "Script": ".\\RoomList.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 28,
+        "Name": "Room Place",
+        "Script": ".\\RoomPlace.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 29,
+        "Name": "Room Regional",
+        "Script": ".\\RoomRegional.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 30,
+        "Name": "Set Booking Policy",
+        "Script": ".\\Set-BookingPolicy.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 31,
+        "Name": "Transport Rules",
+        "Script": ".\\TransportRules.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 32,
+        "Name": "User-Defined Delegates",
+        "Script": ".\\UserDefinedDelegates.ps1",
+        "ObjectTypes": [],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Name": "Migration Status",
+        "Script": ".\\MigrationStatus.ps1",
+        "Section": "Mailbox and Access",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Tier": "Tier2",
+        "NewProcess": false,
+        "Order": 33
+    },
+    {
+        "Order": 34,
+        "Name": "Hybrid Attribute Check",
+        "Script": ".\\HybridAttributeCheck.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Mailbox and Access",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 0,
+        "Name": "Bulk DL Membership",
+        "Script": ".\\Bulk-DLMembership.ps1",
+        "ObjectTypes": [],
+        "Section": "Groups and DLs",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 1,
+        "Name": "DL Memberships",
+        "Script": ".\\DLMemberships.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Groups and DLs",
+        "Tier": "Tier2",
+        "NewProcess": false
+    },
+    {
+        "Order": 2,
+        "Name": "DL to Shared Mailbox",
+        "Script": ".\\DLtoSharedMB.ps1",
+        "ObjectTypes": [],
+        "Section": "Groups and DLs",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 3,
+        "Name": "Group Manager Editor",
+        "Script": ".\\Group-Manager-Editor.ps1",
+        "ObjectTypes": [],
+        "Section": "Groups and DLs",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 4,
+        "Name": "Group Manager",
+        "Script": ".\\Group-Manager.ps1",
+        "ObjectTypes": [],
+        "Section": "Groups and DLs",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 5,
+        "Name": "Group Editor",
+        "Script": ".\\GroupEditor.ps1",
+        "ObjectTypes": [
+            "UnifiedGroup",
+            "OnpremGroup"
+        ],
+        "Section": "Groups and DLs",
+        "Tier": "Tier3",
+        "NewProcess": false
+    },
+    {
+        "Order": 6,
+        "Name": "Bulk Add Members (CSV)",
+        "Script": ".\\Member_BulkADD_CSV.ps1",
+        "ObjectTypes": [],
+        "Section": "Groups and DLs",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 7,
+        "Name": "New Cloud Group",
+        "Script": ".\\NewCloudGroup.ps1",
+        "ObjectTypes": [],
+        "Section": "Groups and DLs",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 8,
+        "Name": "UnifiedGroup Editor",
+        "Script": ".\\UnifiedGroup.ps1",
+        "ObjectTypes": [
+            "UnifiedGroup"
+        ],
+        "Section": "Groups and DLs",
+        "Tier": "Tier1",
+        "NewProcess": false
+    },
+    {
+        "Order": 9,
+        "Name": "Unified Group Membership",
+        "Script": ".\\UnifiedGroupMembership.ps1",
+        "ObjectTypes": [],
+        "Section": "Groups and DLs",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 10,
+        "Name": "dl send to as",
+        "Script": ".\\dl_send_to-as.ps1",
+        "ObjectTypes": [],
+        "Section": "Groups and DLs",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Name": "Dynamic DL Preview",
+        "Script": ".\\DynamicDLPreview.ps1",
+        "Section": "Groups and DLs",
+        "ObjectTypes": [
+            "Mailbox",
+            "UnifiedGroup",
+            "OnpremGroup"
+        ],
+        "Tier": "Tier1",
+        "NewProcess": false,
+        "Order": 11
+    },
+    {
+        "Order": 0,
+        "Name": "Audit SMB",
+        "Script": ".\\AuditSMB.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Reporting",
+        "Tier": "Tier2",
+        "NewProcess": false
+    },
+    {
+        "Order": 1,
+        "Name": "Audit User Mailbox",
+        "Script": ".\\AuditUser.ps1",
+        "ObjectTypes": [
+            "Mailbox"
+        ],
+        "Section": "Reporting",
+        "Tier": "Tier2",
+        "NewProcess": false
+    },
+    {
+        "Order": 2,
+        "Name": "Bug Fix",
+        "Script": ".\\BugFix.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 3,
+        "Name": "Cert Check",
+        "Script": ".\\CertificateExpiry.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 4,
+        "Name": "Clear IIS Logs",
+        "Script": ".\\Clear-IISLogs.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 5,
+        "Name": "Config Backup",
+        "Script": ".\\ConfigBackup.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 6,
+        "Name": "DL Inventory",
+        "Script": ".\\DLInventory.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 7,
+        "Name": "Diagnose AD Gate",
+        "Script": ".\\Diagnose-AdGate.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 8,
+        "Name": "Diagnose ExO Resolve",
+        "Script": ".\\Diagnose-ExoResolve.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 9,
+        "Name": "Disabled/Licensed",
+        "Script": ".\\DisabledLicensed.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 10,
+        "Name": "Exchange Health Check",
+        "Script": ".\\Exchange-HealthCheck.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 11,
+        "Name": "Server Health",
+        "Script": ".\\ServerHealth.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 12,
+        "Name": "Feature Request",
+        "Script": ".\\FeatureRequest.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 13,
+        "Name": "Transport Queues",
+        "Script": ".\\Get-Queues.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 14,
+        "Name": "Log Viewer",
+        "Script": ".\\LogViewer.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "tier3",
+        "NewProcess": false
+    },
+    {
+        "Order": 15,
+        "Name": "M365 Reports",
+        "Script": ".\\M365Reports.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 16,
+        "Name": "MBX Stats",
+        "Script": ".\\MBX-Stats.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 17,
+        "Name": "Orphaned OneDrive",
+        "Script": ".\\OrphanedOneDrive.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 18,
+        "Name": "Ownerless Groups",
+        "Script": ".\\OwnerlessGroups.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 19,
+        "Name": "Permissions Audit",
+        "Script": ".\\PermissionsAudit.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 20,
+        "Name": "Protocol Usage",
+        "Script": ".\\ProtocolUsage.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 21,
+        "Name": "Report Browser",
+        "Script": ".\\ReportBrowser.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 22,
+        "Name": "SMB Inventory",
+        "Script": ".\\SMB_Inventory.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 23,
+        "Name": "MB w No activity",
+        "Script": ".\\StaleAccounts.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 24,
+        "Name": "Tool Status",
+        "Script": ".\\ToolStatus.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 25,
+        "Name": "onprem mailtest",
+        "Script": ".\\onprem-mailtest.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Name": "Mail Flow Connectors",
+        "Script": ".\\MailFlowConnectors.ps1",
+        "Section": "Reporting",
+        "ObjectTypes": [],
+        "Tier": "Tier2",
+        "NewProcess": false,
+        "Order": 26
+    },
+    {
+        "Order": 27,
+        "Name": "Domain Mail Auth Check",
+        "Script": ".\\DomainMailAuthCheck.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 28,
+        "Name": "Free/Busy Viewer",
+        "Script": ".\\FreeBusyViewer.ps1",
+        "ObjectTypes": [],
+        "Section": "Reporting",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 0,
+        "Name": "AvePoint Dashboard",
+        "Script": ".\\AvePoint-Dashboard.ps1",
+        "ObjectTypes": [],
+        "Section": "Projects",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 1,
+        "Name": "Hybrid Message Trace",
+        "Script": ".\\HybridMessageTrace.ps1",
+        "ObjectTypes": [],
+        "Section": "Projects",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 2,
+        "Name": "Unified Trace (End User)",
+        "Script": ".\\Unified-Trace-EndUser.ps1",
+        "ObjectTypes": [],
+        "Section": "Projects",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 3,
+        "Name": "Unified Trace (Mockup)",
+        "Script": ".\\Unified-Trace-Mockup.ps1",
+        "ObjectTypes": [],
+        "Section": "Projects",
+        "Tier": "",
+        "NewProcess": false
+    },
+    {
+        "Order": 4,
+        "Name": "Unified Trace",
+        "Script": ".\\Unified-Trace.ps1",
+        "ObjectTypes": [],
+        "Section": "Projects",
+        "Tier": "",
+        "NewProcess": false
+    }
+]

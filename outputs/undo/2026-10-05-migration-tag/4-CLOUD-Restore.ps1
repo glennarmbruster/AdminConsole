@@ -1,0 +1,579 @@
+﻿#Requires -Version 5.1
+# TOOLKIT-VARIANT: Cloud
+<#
+    4-CLOUD-Restore.ps1
+    Copied from AdminConsole\RestoreMailbox.ps1 and rewired to read Step 3's
+    output instead of a filter box. The console tool is untouched.
+
+    Author   : Glenn Armbruster
+    Revised  : 2026-09-08
+#>
+# TOOLKIT-HELP-RUNS: reads the soft-deleted list and the recipient directory. Restore creates and changes things and asks first.
+# TOOLKIT-HELP-BEGIN
+# STEP 4 of the Migration project. Brings back, in the cloud, everything
+# Step 3 pushed out of sync scope -- as CLOUD-ONLY objects.
+#
+# Reads the newest Migration-Moved_*.csv and works out where each object is
+# now:
+#
+#   SHARED MAILBOX   The sync deleted the Entra user, which put the mailbox
+#                    in "soft-deleted" for 30 days. Undo-SoftDeletedMailbox
+#                    restores the USER AND THE MAILBOX in one call -- the
+#                    PowerShell form of admin center > Deleted users >
+#                    Restore -- with a password set at the same time, so
+#                    there is no prompt. It comes back with its addresses,
+#                    permissions and contents. If it came back as a user
+#                    mailbox it is converted to shared.
+#
+#   DISTRIBUTION LIST  Lists have NO recycle bin: the sync deleted it
+#                    outright. It is RECREATED from the Step DL-1 export --
+#                    name, alias, address, type, owners, join/depart rules
+#                    -- then its members are added one by one. Step 5 stamps
+#                    the rest (proxies, X500, restrictions, custom attributes).
+#
+# EVERY SOFT-DELETED MAILBOX IN THE TENANT can be shown too -- tick 'Show
+# every soft-deleted mailbox' and Refresh. Rows that are not in this batch
+# appear with State 'soft-deleted -- not in this batch', unticked, with the
+# date they were deleted; sort by Deleted (click the header) to find
+# today's. They can be ticked and restored like any other row, but Step 5
+# has no export to restamp them from, so for those the restore is all there
+# is.
+#
+# HOW A MAILBOX COMES BACK (changed 2026-10-04). The sync deleted the USER,
+# so the user is restored in Entra -- Graph, directory/deletedItems/{id}/
+# restore -- and Exchange reconnects the mailbox to it within a couple of
+# minutes; this tool waits for that. The console must be connected to
+# Microsoft Graph (MSGraph connect button; User.ReadWrite.All is in the
+# sign-in already). Without Graph it falls back to Undo-SoftDeletedMailbox,
+# which only works when the user still exists.
+#
+# THE STATE COLUMN IS THE GATE. "ready" rows are ticked for you. "still
+# synced" means the sync has not run yet -- wait and press Refresh. "already
+# restored" means a previous run did it. Nothing happens to a row that is
+# not ticked, and nothing happens at all until you confirm.
+#
+# MAILBOXES FIRST, THEN LISTS, always -- a list's members include mailboxes
+# from the same batch, and a member that does not exist yet is skipped.
+#
+# THE PASSWORD. $DefaultPassword at the top of this script. Leave it blank
+# and each mailbox gets a random one nobody knows, which is the right answer
+# for a shared mailbox (its account stays sign-in blocked either way). Fill
+# it in if the team has a standard.
+#
+# Output lands next to this script:
+#     Migration-Restored_<date>_<time>.csv
+#
+# Needs Exchange Online connected in this window. Run Step 5 next.
+# TOOLKIT-HELP-END
+
+# ---- The one setting. Blank = random per mailbox, never shown. ----
+$DefaultPassword = ''
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$toolkitRoot = $PSScriptRoot
+while ($toolkitRoot -and -not (Test-Path -LiteralPath (Join-Path $toolkitRoot 'Common.ps1'))) {
+    $toolkitRoot = Split-Path -Parent $toolkitRoot
+}
+if (-not $toolkitRoot) { throw "Common.ps1 was not found in any folder above '$PSScriptRoot'." }
+. (Join-Path $toolkitRoot 'Common.ps1')
+. (Join-Path $PSScriptRoot '_Shared.ps1')
+
+$basePath = $PSScriptRoot
+
+#region Data ------------------------------------------------------------------
+
+function exo { param([string]$n, [hashtable]$p) Invoke-EXOCommand -Name $n -Parameters $p }
+
+function New-RestorePassword {
+    param([string]$Fixed)
+    $plain = "$Fixed"
+    if (-not $plain) {
+        # 24 characters from a set with no look-alikes. Never printed.
+        $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!#$%&*+-=?@'
+        $rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider
+        $b = New-Object byte[] 24; $rng.GetBytes($b)
+        $plain = -join ($b | ForEach-Object { $chars[$_ % $chars.Length] })
+    }
+    return (ConvertTo-SecureString -String $plain -AsPlainText -Force)
+}
+
+function Get-SoftDeletedMailboxList {
+    # Learn (Get-Mailbox): -SoftDeletedMailbox returns only soft-deleted ones.
+    return @(exo 'Get-Mailbox' @{ SoftDeletedMailbox = $true; ResultSize = 'Unlimited'; ErrorAction = 'Stop' })
+}
+
+function Restore-SoftDeletedInPlace {
+    <#
+        Learn 2026-09-08 (Undo-SoftDeletedMailbox): -SoftDeletedObject <alias
+        or address>; -Password <SecureString> "specifies a new password for
+        the mailbox". User and mailbox come back together. No prompt.
+    #>
+    param([Parameter(Mandatory)][string]$Smtp, [Parameter(Mandatory)][securestring]$Password)
+    return (exo 'Undo-SoftDeletedMailbox' @{ SoftDeletedObject = $Smtp; Password = $Password; ErrorAction = 'Stop' })
+}
+
+function Test-GraphRestoreReady {
+    <#
+        Can THIS process restore a deleted Entra user through Graph?
+        Any one of these delegated scopes will do (Learn, "Restore deleted
+        item": least privileged User.DeleteRestore.All; User.ReadWrite.All
+        and Directory.ReadWrite.All are the higher-privileged alternatives).
+        The signed-in person also needs User Administrator or above.
+    #>
+    $ok = @('User.DeleteRestore.All', 'User.ReadWrite.All', 'Directory.ReadWrite.All', 'Directory.AccessAsUser.All')
+    $g = $null
+    try { $g = Test-GraphConnectionState } catch { }
+    if (-not $g -or -not $g.Connected) { return [PSCustomObject]@{ Ok = $false; Why = 'Microsoft Graph is not connected in this window -- press the MSGraph connect button.' } }
+    $have = @($g.Scopes | Where-Object { $ok -contains $_ })
+    if ($have.Count -eq 0) { return [PSCustomObject]@{ Ok = $false; Why = "The Graph sign-in holds none of $($ok -join ', ') -- reconnect MSGraph." } }
+    return [PSCustomObject]@{ Ok = $true; Why = "Graph connected with $($have[0])." }
+}
+
+function Restore-MailboxViaEntraUser {
+    <#
+        THE RESTORE THAT WORKS WHEN THE USER WAS DELETED. Found 2026-10-04 on
+        the first live batch: Undo-SoftDeletedMailbox fails with
+        "UnableToWriteToAadException ... Resource '<id>' does not exist" when
+        the Entra user is in the recycle bin, which is exactly what a
+        directory sync does when the account leaves its scope. Microsoft
+        Learn ("Delete or restore user mailboxes"): restore from the same
+        place the deletion happened -- the USER, in Entra. The mailbox
+        reconnects to it on its own, usually within a couple of minutes.
+
+        Graph: POST directory/deletedItems/{id}/restore (Learn, verified
+        2026-10-04). {id} is the mailbox's ExternalDirectoryObjectId, which
+        the soft-deleted mailbox object still carries.
+
+        Returns the detail text; throws on failure. Polls Get-Mailbox for up
+        to -WaitSeconds until the mailbox answers as active.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$EntraObjectId,
+        [Parameter(Mandatory)][string]$ExchangeGuid,
+        [int]$WaitSeconds = 300
+    )
+    $g = Test-GraphRestoreReady
+    if (-not $g.Ok) { throw $g.Why }
+
+    # Already back? (A previous run restored the user and timed out waiting.)
+    $deleted = $null
+    try { $deleted = Invoke-ToolkitGraph -Uri "directory/deletedItems/$EntraObjectId" } catch { $deleted = $null }
+    if ($deleted) {
+        Invoke-ToolkitGraph -Uri "directory/deletedItems/$EntraObjectId/restore" -Method POST | Out-Null
+        $detail = 'Entra user restored from the recycle bin'
+    } else {
+        $detail = 'Entra user was not in the recycle bin (already restored?)'
+    }
+
+    # Wait for Exchange to reconnect the mailbox to the user.
+    $deadline = (Get-Date).AddSeconds($WaitSeconds)
+    $mb = $null
+    while ((Get-Date) -lt $deadline) {
+        try { $mb = Invoke-EXOCommand -Name 'Get-Mailbox' -Parameters @{ Identity = $ExchangeGuid; ErrorAction = 'Stop' } } catch { $mb = $null }
+        if ($mb) { break }
+        Start-Sleep -Seconds 15
+    }
+    if (-not $mb) { throw "$detail, but the mailbox has not reconnected after $WaitSeconds seconds. Wait a few minutes and press Refresh -- it usually shows as 'already restored'." }
+    $detail += "; mailbox active after $([int]((Get-Date) - $deadline).TotalSeconds + $WaitSeconds)s"
+    if ("$($mb.IsDirSynced)" -eq 'True') { $detail += '; WARNING: still reports IsDirSynced -- check after the next sync' }
+    return [PSCustomObject]@{ Detail = $detail; Mailbox = $mb }
+}
+
+function ConvertTo-DeletedStamp {
+    # Local time, sortable as text (yyyy-MM-dd HH:mm), '' when unknown.
+    param($When)
+    try { if ($When) { return ([datetime]$When).ToLocalTime().ToString('yyyy-MM-dd HH:mm') } } catch { }
+    return ''
+}
+
+function Get-ObjectState {
+    <#
+        Where is this object right now? Returns State, Ready, Detail, and for
+        a soft-deleted mailbox its identity for Undo-.
+    #>
+    param([Parameter(Mandatory)][object]$Row, [object[]]$SoftDeleted)
+    $smtp = "$($Row.PrimarySmtpAddress)"
+    if ($Row.Type -eq 'SMB') {
+        # BY EXCHANGEGUID FIRST, ADDRESS SECOND, NEWEST WINS. Found 2026-10-04
+        # on the first live batch: both mailboxes had an OLDER soft-deleted
+        # copy with the same address (a previous life of the mailbox), so
+        # Undo-SoftDeletedMailbox by address failed with "isn't unique". The
+        # Step 2 export carries the live mailbox's ExchangeGuid; that is the
+        # one to match, and the one to hand to Undo- (MailboxIdParameter
+        # accepts a GUID). Without a GUID, the most recently deleted copy is
+        # the one this project just caused.
+        $gid = "$($Row.ExchangeGuid)"
+        if ($gid -match '^0+-0+-0+-0+-0+$') { $gid = '' }
+        $sd = $null
+        if ($gid) { $sd = $SoftDeleted | Where-Object { "$($_.ExchangeGuid)" -eq $gid } | Select-Object -First 1 }
+        if (-not $sd) {
+            $cands = @($SoftDeleted | Where-Object { "$($_.PrimarySmtpAddress)" -ieq $smtp } | Sort-Object { try { [datetime]$_.WhenSoftDeleted } catch { [datetime]::MinValue } } -Descending)
+            if ($cands.Count -gt 0) { $sd = $cands[0] }
+        }
+        if ($sd) {
+            $left = ''
+            try { $left = [Math]::Max(0, [int](30 - ((Get-Date).ToUniversalTime() - ([datetime]$sd.WhenSoftDeleted).ToUniversalTime()).TotalDays)) } catch { }
+            $dupes = @($SoftDeleted | Where-Object { "$($_.PrimarySmtpAddress)" -ieq $smtp }).Count
+            $note = if ($dupes -gt 1) { "; $dupes soft-deleted copies share this address -- restoring GUID $($sd.ExchangeGuid)" } else { '' }
+            return [PSCustomObject]@{ State = 'soft-deleted -- ready'; Ready = $true; Detail = "$left day(s) left$note"; Identity = "$($sd.ExchangeGuid)"; EntraId = "$($sd.ExternalDirectoryObjectId)"; DaysLeft = "$left"; Deleted = (ConvertTo-DeletedStamp $sd.WhenSoftDeleted) }
+        }
+        $mb = $null
+        try { $mb = exo 'Get-Mailbox' @{ Identity = $smtp; ErrorAction = 'Stop' } } catch { }
+        if ($mb) {
+            if ("$($mb.IsDirSynced)" -eq 'True') { return [PSCustomObject]@{ State = 'still synced -- wait'; Ready = $false; Detail = 'sync has not removed it yet'; Identity = ''; DaysLeft = '' } }
+            return [PSCustomObject]@{ State = 'already restored'; Ready = $false; Detail = "$($mb.RecipientTypeDetails), cloud-only"; Identity = ''; DaysLeft = '' }
+        }
+        return [PSCustomObject]@{ State = 'NOT FOUND'; Ready = $false; Detail = 'not active, not soft-deleted -- check Deleted users in the admin center'; Identity = ''; DaysLeft = '' }
+    }
+    # DL
+    $dg = $null
+    try { $dg = exo 'Get-DistributionGroup' @{ Identity = $smtp; ErrorAction = 'Stop' } } catch { }
+    if ($dg) {
+        if ("$($dg.IsDirSynced)" -eq 'True') { return [PSCustomObject]@{ State = 'still synced -- wait'; Ready = $false; Detail = 'sync has not removed it yet'; Identity = ''; DaysLeft = '' } }
+        return [PSCustomObject]@{ State = 'already recreated'; Ready = $false; Detail = 'cloud-only list exists'; Identity = ''; DaysLeft = '' }
+    }
+    $other = $null
+    try { $other = exo 'Get-Recipient' @{ Identity = $smtp; ErrorAction = 'Stop' } } catch { }
+    if ($other) { return [PSCustomObject]@{ State = 'ADDRESS IN USE'; Ready = $false; Detail = "$($other.RecipientTypeDetails) $($other.Name) holds this address"; Identity = ''; DaysLeft = '' } }
+    if (-not $Row.Export) { return [PSCustomObject]@{ State = 'NO STEP DL-1 EXPORT'; Ready = $false; Detail = 'gone, but no Migration-DL-ONPREM row to rebuild from'; Identity = ''; DaysLeft = '' } }
+    return [PSCustomObject]@{ State = 'gone -- ready to recreate'; Ready = $true; Detail = "$($Row.Export.MemberCount) member(s) in export"; Identity = ''; DaysLeft = '' }
+}
+
+function New-CloudListFromExport {
+    <#
+        Learn 2026-09-08 (New-DistributionGroup, EXO): -Name, -Alias,
+        -DisplayName, -PrimarySmtpAddress, -Type Distribution|Security,
+        -ManagedBy, -MemberJoinRestriction, -MemberDepartRestriction,
+        -RequireSenderAuthenticationEnabled, -IgnoreNamingPolicy, -Notes.
+        Members are added afterwards, one at a time, so one missing member
+        does not fail the create.
+    #>
+    param([Parameter(Mandatory)][object]$OnPrem, [object]$Cloud)
+    $type = if ("$($OnPrem.GroupType)" -match 'SecurityEnabled') { 'Security' } else { 'Distribution' }
+    $owners = @(ConvertFrom-CsvList $OnPrem.ManagedBy)
+    if ($Cloud -and "$($Cloud.ManagedBy)") { $owners = @($owners + (ConvertFrom-CsvList $Cloud.ManagedBy) | Select-Object -Unique) }
+    $p = @{
+        Name                               = "$($OnPrem.Name)"
+        Alias                              = "$($OnPrem.Alias)"
+        DisplayName                        = "$($OnPrem.DisplayName)"
+        PrimarySmtpAddress                 = "$($OnPrem.PrimarySmtpAddress)"
+        Type                               = $type
+        RequireSenderAuthenticationEnabled = ("$($OnPrem.RequireSenderAuthenticationEnabled)" -ne 'False')
+        IgnoreNamingPolicy                 = $true
+        ErrorAction                        = 'Stop'
+    }
+    if ("$($OnPrem.MemberJoinRestriction)")   { $p.MemberJoinRestriction   = "$($OnPrem.MemberJoinRestriction)" }
+    if ("$($OnPrem.MemberDepartRestriction)") { $p.MemberDepartRestriction = "$($OnPrem.MemberDepartRestriction)" }
+    if ("$($OnPrem.Notes)")                   { $p.Notes = "$($OnPrem.Notes)" }
+    # Owners that resolve go on at create; the rest are Step 5's problem and
+    # are reported.
+    $good = @(); $badOwners = @()
+    foreach ($o in $owners) { try { [void](exo 'Get-Recipient' @{ Identity = $o; ErrorAction = 'Stop' }); $good += $o } catch { $badOwners += $o } }
+    if ($good.Count) { $p.ManagedBy = $good }
+    $dg = exo 'New-DistributionGroup' $p
+    # Members: cloud export first (it knows cloud-only recipients), on-prem
+    # as the fallback, union of both.
+    $members = @(ConvertFrom-CsvList $OnPrem.Members)
+    if ($Cloud -and "$($Cloud.Members)") { $members = @($members + (ConvertFrom-CsvList $Cloud.Members) | Select-Object -Unique) }
+    $added = 0; $missing = @()
+    foreach ($m in $members) {
+        try {
+            exo 'Add-DistributionGroupMember' @{ Identity = "$($dg.PrimarySmtpAddress)"; Member = $m; BypassSecurityGroupManagerCheck = $true; ErrorAction = 'Stop' } | Out-Null
+            $added++
+        } catch { $missing += $m }
+    }
+    return [PSCustomObject]@{ Group = $dg; Added = $added; Missing = $missing; BadOwners = $badOwners }
+}
+#endregion
+
+#region UI --------------------------------------------------------------------
+
+function Show-RestoreForm {
+    param([Parameter(Mandatory)][object]$MovedFile, [object[]]$Plan)
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "6 - CLOUD Restore  --  $($MovedFile.Name)"
+    $form.ClientSize = New-Object System.Drawing.Size(1100, 560)
+    $form.StartPosition = 'Manual'
+    $form.Font = New-Object System.Drawing.Font('Microsoft Sans Serif', 9)
+
+    $y = 12
+    $lblStatus = New-Object System.Windows.Forms.Label
+    $lblStatus.Location = New-Object System.Drawing.Point(12, $y)
+    $lblStatus.Size = New-Object System.Drawing.Size(940, 18)
+    $lblStatus.ForeColor = [System.Drawing.Color]::DimGray
+    $lblStatus.Text = "Press Refresh to read the cloud state of the $($Plan.Count) object(s) in $($MovedFile.Name)."
+    $form.Controls.Add($lblStatus)
+
+    $chkAll = New-Object System.Windows.Forms.CheckBox
+    $chkAll.Text = 'Show every soft-deleted mailbox in the tenant (not just this batch)'
+    $chkAll.Location = New-Object System.Drawing.Point(12, ($y + 20))
+    $chkAll.Size = New-Object System.Drawing.Size(520, 20)
+    $form.Controls.Add($chkAll)
+
+    $btnLoad = New-Object System.Windows.Forms.Button
+    $btnLoad.Text = 'Refresh'
+    $btnLoad.Location = New-Object System.Drawing.Point(958, ($y - 4))
+    $btnLoad.Size = New-Object System.Drawing.Size(130, 28)
+    $form.Controls.Add($btnLoad)
+    $y += 46
+
+    $pb = Add-ReportProgressBar -Form $form -X 12 -Y $y -Width 1076 -Height 14
+    $y += 24
+
+    $grid = New-Object System.Windows.Forms.DataGridView
+    $grid.Location = New-Object System.Drawing.Point(12, $y)
+    $grid.Size = New-Object System.Drawing.Size(1076, 360)
+    $grid.ReadOnly = $false
+    $grid.AllowUserToAddRows = $false; $grid.AllowUserToDeleteRows = $false
+    $grid.SelectionMode = 'FullRowSelect'; $grid.MultiSelect = $false
+    $grid.AutoSizeColumnsMode = 'Fill'; $grid.RowHeadersVisible = $false
+    $grid.Font = New-Object System.Drawing.Font('Consolas', 9)
+    $colPick = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
+    $colPick.HeaderText = ''; $colPick.Name = 'Pick'; $colPick.FillWeight = 4
+    [void]$grid.Columns.Add($colPick)
+    foreach ($c in @(@('Type', 5), @('Name', 16), @('Address', 24), @('Deleted', 11), @('State', 17), @('Detail', 22), @('DaysLeft', 6))) {
+        $col = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+        $col.Name = $c[0]; $col.HeaderText = $c[0]; $col.FillWeight = $c[1]; $col.ReadOnly = $true
+        # Click a header to sort -- Deleted is yyyy-MM-dd HH:mm so text order
+        # is date order.
+        $col.SortMode = [System.Windows.Forms.DataGridViewColumnSortMode]::Automatic
+        [void]$grid.Columns.Add($col)
+    }
+    $colIx = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+    $colIx.Name = 'Ix'; $colIx.Visible = $false
+    [void]$grid.Columns.Add($colIx)
+    $form.Controls.Add($grid)
+    $y += 370
+
+    $btnAll = New-Object System.Windows.Forms.Button
+    $btnAll.Text = 'Tick all ready'; $btnAll.Location = New-Object System.Drawing.Point(12, $y); $btnAll.Size = New-Object System.Drawing.Size(120, 28)
+    $form.Controls.Add($btnAll)
+    $btnNone = New-Object System.Windows.Forms.Button
+    $btnNone.Text = 'Untick all'; $btnNone.Location = New-Object System.Drawing.Point(140, $y); $btnNone.Size = New-Object System.Drawing.Size(100, 28)
+    $form.Controls.Add($btnNone)
+    $btnGo = New-Object System.Windows.Forms.Button
+    $btnGo.Text = 'Restore ticked'; $btnGo.Location = New-Object System.Drawing.Point(260, $y); $btnGo.Size = New-Object System.Drawing.Size(160, 28); $btnGo.Enabled = $false
+    $form.Controls.Add($btnGo)
+    $btnClose = New-Object System.Windows.Forms.Button
+    $btnClose.Text = 'Close'; $btnClose.Location = New-Object System.Drawing.Point(958, $y); $btnClose.Size = New-Object System.Drawing.Size(130, 28)
+    $form.Controls.Add($btnClose); $btnClose.Add_Click({ $form.Close() })
+
+    $form | Add-Member -NotePropertyName 'Busy'  -NotePropertyValue $false -Force
+    $form | Add-Member -NotePropertyName 'Plan'  -NotePropertyValue $Plan  -Force
+    $form | Add-Member -NotePropertyName 'BasePlan' -NotePropertyValue $Plan -Force
+    $form | Add-Member -NotePropertyName 'State' -NotePropertyValue @{}    -Force
+
+    # 'Tick all ready' ticks the BATCH only; a mailbox outside the batch is a
+    # deliberate individual tick.
+    $btnAll.Add_Click({  foreach ($r in $grid.Rows) { $r.Cells['Pick'].Value = [bool]($form.State["$($r.Cells['Ix'].Value)"].Ready -and ([int]$r.Cells['Ix'].Value -lt 100000)) }; $grid.EndEdit() | Out-Null })
+    $btnNone.Add_Click({ foreach ($r in $grid.Rows) { $r.Cells['Pick'].Value = $false }; $grid.EndEdit() | Out-Null })
+    $grid.Add_CurrentCellDirtyStateChanged({ if ($grid.IsCurrentCellDirty) { $grid.CommitEdit([System.Windows.Forms.DataGridViewDataErrorContexts]::Commit) | Out-Null } })
+
+    $btnLoad.Add_Click({
+        if ($form.Busy) { return }
+        $form.Busy = $true
+        try {
+            $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+            $grid.Rows.Clear(); $btnGo.Enabled = $false
+            $p = New-ProgressReporter -Label $lblStatus -Bar $pb -Activity 'Reading'
+            & $p 'Reading soft-deleted mailboxes...' -1
+            $sd = Get-SoftDeletedMailboxList
+            # The batch, plus -- if asked -- every other soft-deleted mailbox
+            # in the tenant as its own row. Extra rows get Ix values above the
+            # batch's so the State table and the restore loop treat them
+            # alike; they carry no export, which only Step 5 cares about.
+            $form.Plan = @($form.BasePlan)
+            if ($chkAll.Checked) {
+                $known = @($form.BasePlan | ForEach-Object { "$($_.PrimarySmtpAddress)".ToLowerInvariant() })
+                $nx = 100000
+                foreach ($m in ($sd | Sort-Object WhenSoftDeleted -Descending)) {
+                    $a = "$($m.PrimarySmtpAddress)"
+                    if ($known -contains $a.ToLowerInvariant()) { continue }
+                    $nx++
+                    $form.Plan += [PSCustomObject]@{ Ix = $nx; Type = 'SMB'; Name = "$($m.DisplayName)"; PrimarySmtpAddress = $a; ExchangeGuid = "$($m.ExchangeGuid)"; EntraId = "$($m.ExternalDirectoryObjectId)"; Export = $null; CloudExport = $null; Extra = $true; Deleted = (ConvertTo-DeletedStamp $m.WhenSoftDeleted); Rtd = "$($m.RecipientTypeDetails)" }
+                }
+            }
+            $ready = 0; $i = 0
+            foreach ($row in $form.Plan) {
+                $i++
+                & $p "Checking $i of $($form.Plan.Count): $($row.PrimarySmtpAddress)" ([int](100 * $i / $form.Plan.Count))
+                if ($row.PSObject.Properties['Extra'] -and $row.Extra) {
+                    # Already known to be soft-deleted -- no lookups needed.
+                    $left = ''
+                    $sdm = $sd | Where-Object { "$($_.PrimarySmtpAddress)" -ieq "$($row.PrimarySmtpAddress)" } | Select-Object -First 1
+                    try { $left = [Math]::Max(0, [int](30 - ((Get-Date).ToUniversalTime() - ([datetime]$sdm.WhenSoftDeleted).ToUniversalTime()).TotalDays)) } catch { }
+                    $st = [PSCustomObject]@{ State = 'soft-deleted -- not in this batch'; Ready = $true; Detail = "$($row.Rtd); $left day(s) left; no export to restamp"; Identity = "$($row.ExchangeGuid)"; EntraId = "$($row.EntraId)"; DaysLeft = "$left"; Deleted = $row.Deleted }
+                    $form.State["$($row.Ix)"] = $st
+                    $n = $grid.Rows.Add($false, 'SMB', "$($row.Name)", "$($row.PrimarySmtpAddress)", $st.Deleted, $st.State, $st.Detail, $st.DaysLeft, "$($row.Ix)")
+                    $grid.Rows[$n].DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(235, 235, 245)
+                    continue
+                }
+                $st = Get-ObjectState -Row $row -SoftDeleted $sd
+                $form.State["$($row.Ix)"] = $st
+                $del = if ($st.PSObject.Properties['Deleted']) { "$($st.Deleted)" } else { '' }
+                $n = $grid.Rows.Add([bool]$st.Ready, "$($row.Type)", "$($row.Name)", "$($row.PrimarySmtpAddress)", $del, $st.State, $st.Detail, $st.DaysLeft, "$($row.Ix)")
+                if ($st.Ready) { $ready++; $grid.Rows[$n].DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(225, 245, 225) }
+                elseif ($st.State -match 'already') { $grid.Rows[$n].DefaultCellStyle.ForeColor = [System.Drawing.Color]::Gray }
+                elseif ($st.State -match 'wait') { $grid.Rows[$n].DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(255, 245, 205) }
+                else { $grid.Rows[$n].DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(250, 210, 200) }
+            }
+            $extraN = @($form.Plan | Where-Object { $_.PSObject.Properties['Extra'] -and $_.Extra }).Count
+            & $p "$ready of $($form.BasePlan.Count) in the batch ready and ticked$(if ($extraN) { "; $extraN other soft-deleted mailbox(es) listed unticked" }). Yellow = sync not through yet (wait, Refresh). Red = needs a look. Click a header to sort." 100
+            $btnGo.Enabled = ($ready -gt 0 -or $extraN -gt 0)
+        } catch {
+            $lblStatus.Text = 'Refresh failed -- see the error dialog.'
+            Show-HandlerError -ErrorRecord $_ -Context 'Refresh (Get-Mailbox -SoftDeletedMailbox)'
+        } finally { $form.Cursor = [System.Windows.Forms.Cursors]::Default; $form.Busy = $false }
+    })
+
+    $btnGo.Add_Click({
+        if ($form.Busy) { return }
+        $form.Busy = $true
+        try {
+            $grid.EndEdit() | Out-Null
+            $picked = @($grid.Rows | Where-Object { $_.Cells['Pick'].Value -eq $true })
+            if ($picked.Count -eq 0) { $lblStatus.Text = 'Tick one or more rows.'; return }
+            $notReady = @($picked | Where-Object { -not $form.State["$($_.Cells['Ix'].Value)"].Ready })
+            if ($notReady.Count) { $lblStatus.Text = "$($notReady.Count) ticked row(s) are not ready -- untick them (Refresh re-reads the state)."; return }
+            # Mailboxes first, then lists -- list members include the mailboxes.
+            $picked = @($picked | Sort-Object { if ("$($_.Cells['Type'].Value)" -eq 'SMB') { 0 } else { 1 } })
+            $nS = @($picked | Where-Object { "$($_.Cells['Type'].Value)" -eq 'SMB' }).Count
+            $nD = $picked.Count - $nS
+            $a = [System.Windows.Forms.MessageBox]::Show(
+                ("Restore $nS mailbox(es) and recreate $nD list(s) as cloud-only objects?" + "`r`n`r`n  " +
+                 (($picked | ForEach-Object { "$($_.Cells['Type'].Value)  $($_.Cells['Address'].Value)" }) -join "`r`n  ") +
+                 "`r`n`r`nMailboxes come back with their permissions and contents. Lists are rebuilt from the Step DL-1 export; Step 5 finishes them."),
+                'Confirm', 'OKCancel', 'Question')
+            if ($a -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+            $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+            $btnGo.Enabled = $false; $btnLoad.Enabled = $false
+            $p = New-ProgressReporter -Label $lblStatus -Bar $pb -Activity 'Restoring'
+            $ok = 0; $failed = 0; $i = 0; $errs = @(); $out = @()
+            foreach ($r in $picked) {
+                $i++
+                $row = $form.Plan | Where-Object { "$($_.Ix)" -eq "$($r.Cells['Ix'].Value)" } | Select-Object -First 1
+                $st = $form.State["$($row.Ix)"]
+                $smtp = "$($row.PrimarySmtpAddress)"
+                & $p "$i of $($picked.Count): $smtp" ([int](100 * $i / $picked.Count))
+                $detail = ''
+                try {
+                    if ($row.Type -eq 'SMB') {
+                        # TWO WAYS BACK, decided by where the deletion happened.
+                        # The sync deleted the USER, so the user is restored in
+                        # Entra (Graph) and the mailbox follows. Undo-SoftDeleted-
+                        # Mailbox is the fallback for a mailbox whose user still
+                        # exists -- it fails on a deleted user (2026-10-04).
+                        $viaGraph = $false
+                        if ("$($st.EntraId)") {
+                            $gr = Test-GraphRestoreReady
+                            if ($gr.Ok) { $viaGraph = $true }
+                            elseif (-not $script:GraphWarned) { $script:GraphWarned = $true; $errs += "NOTE: $($gr.Why) Falling back to Undo-SoftDeletedMailbox, which fails when the Entra user was deleted." }
+                        }
+                        if ($viaGraph) {
+                            $res = Restore-MailboxViaEntraUser -EntraObjectId $st.EntraId -ExchangeGuid $st.Identity
+                            $detail = $res.Detail
+                        } else {
+                            Restore-SoftDeletedInPlace -Smtp $st.Identity -Password (New-RestorePassword -Fixed $DefaultPassword) | Out-Null
+                            $detail = 'restored (user + mailbox) via Undo-SoftDeletedMailbox'
+                        }
+                        # A mailbox restored as UserMailbox becomes Shared.
+                        # Learn (Set-Mailbox): -Type Shared.
+                        $mb = $null
+                        try { $mb = exo 'Get-Mailbox' @{ Identity = $smtp; ErrorAction = 'Stop' } } catch { }
+                        if ($mb -and "$($mb.RecipientTypeDetails)" -eq 'UserMailbox') {
+                            exo 'Set-Mailbox' @{ Identity = $smtp; Type = 'Shared'; ErrorAction = 'Stop' } | Out-Null
+                            $detail += ', converted to Shared'
+                        }
+                        Write-CompletedLog -Action 'MigrationRestoreMailbox' -Target (Get-LogTarget $smtp) -Result 'Success' -Detail "Undo-SoftDeletedMailbox; $detail"
+                    } else {
+                        $cloudRow = $row.CloudExport
+                        $res = New-CloudListFromExport -OnPrem $row.Export -Cloud $cloudRow
+                        $detail = "recreated; $($res.Added) member(s) added"
+                        if ($res.Missing.Count)   { $detail += "; $($res.Missing.Count) member(s) not found: $($res.Missing -join ', ')" }
+                        if ($res.BadOwners.Count) { $detail += "; owner(s) not found: $($res.BadOwners -join ', ')" }
+                        Write-CompletedLog -Action 'MigrationRecreateList' -Target (Get-LogTarget $smtp) -Result $(if ($res.Missing.Count -or $res.BadOwners.Count) { 'Partial' } else { 'Success' }) -Detail "New-DistributionGroup; $detail"
+                    }
+                    $r.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(200, 240, 200)
+                    $r.Cells['State'].Value = 'done'; $r.Cells['Detail'].Value = $detail; $r.Cells['Pick'].Value = $false
+                    $form.State["$($row.Ix)"] = [PSCustomObject]@{ State = 'done'; Ready = $false; Detail = $detail; Identity = ''; DaysLeft = ''; Deleted = '' }
+                    $ok++
+                } catch {
+                    $failed++
+                    $detail = "FAILED: $($_.Exception.Message)"
+                    # THE USER IS IN THE ENTRA RECYCLE BIN and Graph is not
+                    # available here. Say what to do instead of showing JSON:
+                    # restore the user in the admin center; Exchange reconnects
+                    # the mailbox by itself, and Refresh then shows it as
+                    # 'already restored'. Steps 5-6 carry on from there.
+                    if ($detail -match 'UnableToWriteToAad|does not exist or one of its queried reference') {
+                        $detail = "USER DELETED -- restore it by hand: Microsoft 365 admin center > Users > Deleted users > tick $smtp > Restore (no new password needed). Wait 2-3 minutes, press Refresh here; the row shows 'already restored'. Then run Step 5. (Connecting MSGraph in the console lets this tool do that step itself.)"
+                    }
+                    $r.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(250, 200, 200)
+                    $r.Cells['Detail'].Value = $detail
+                    $errs += "$smtp -- $($_.Exception.Message)"
+                    Write-FailedLog -Action $(if ($row.Type -eq 'SMB') { 'MigrationRestoreMailbox' } else { 'MigrationRecreateList' }) -Target (Get-LogTarget $smtp) -ErrorRecord $_
+                }
+                $out += [PSCustomObject]@{ Type = $row.Type; Name = $row.Name; PrimarySmtpAddress = $smtp; Result = $(if ($detail -like 'FAILED*') { 'Failed' } else { 'Success' }); Detail = $detail; RestoredUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') }
+            }
+            $outFile = Join-Path $basePath "Migration-Restored_$(Get-MigrationTimestamp).csv"
+            $out | Export-Csv -LiteralPath $outFile -NoTypeInformation -Encoding UTF8
+            $lblStatus.Text = "$ok done, $failed failed. Written to $([System.IO.Path]::GetFileName($outFile)). Next: Step 5."
+            if ($failed) {
+                [System.Windows.Forms.MessageBox]::Show(("$failed of $($picked.Count) failed:" + "`r`n`r`n  " + ($errs -join "`r`n  ")), 'Partial', 'OK', 'Warning') | Out-Null
+            }
+        } catch {
+            $lblStatus.Text = 'Restore failed -- see the error dialog.'
+            Show-HandlerError -ErrorRecord $_ -Context 'Restore ticked'
+        } finally {
+            $btnGo.Enabled = $true; $btnLoad.Enabled = $true
+            $form.Cursor = [System.Windows.Forms.Cursors]::Default
+            $form.Busy = $false
+        }
+    })
+
+    Set-ConsoleTheme -Form $form
+    Set-FormScreenCorner -Form $form -Corner 'BottomLeft'
+    Add-ToolHelpButton -Form $form -ScriptPath $PSCommandPath -Title '4 - CLOUD Restore' | Out-Null
+    [void]$form.ShowDialog()
+}
+#endregion
+
+# ---- Inputs: newest Moved file, newest DL exports (for the recreate) ----
+$movedFile = Get-NewestExport -Folder $basePath -Pattern 'Migration-Moved_*.csv'
+if (-not $movedFile) {
+    [System.Windows.Forms.MessageBox]::Show('No Migration-Moved_*.csv found next to this script. Run Step 3 first.', '4 - CLOUD Restore', 'OK', 'Warning') | Out-Null
+    return
+}
+$moved = @(Import-Csv -LiteralPath $movedFile.FullName | Where-Object { $_.Result -eq 'Moved' -or $_.Result -eq 'AlreadyThere' })
+if ($moved.Count -eq 0) { [System.Windows.Forms.MessageBox]::Show("$($movedFile.Name) has no moved rows.", '4 - CLOUD Restore', 'OK', 'Warning') | Out-Null; return }
+
+$smbCl = @()
+$f = Get-NewestExport -Folder $basePath -Pattern 'Migration-SMB-CLOUD_*.csv'; if ($f) { $smbCl = @(Import-Csv -LiteralPath $f.FullName) }
+$dlOn = @(); $dlCl = @()
+$f = Get-NewestExport -Folder $basePath -Pattern 'Migration-DL-ONPREM_*.csv'; if ($f) { $dlOn = @(Import-Csv -LiteralPath $f.FullName) }
+$f = Get-NewestExport -Folder $basePath -Pattern 'Migration-DL-CLOUD_*.csv';  if ($f) { $dlCl = @(Import-Csv -LiteralPath $f.FullName) }
+
+$plan = @(); $ix = 0
+foreach ($m in $moved) {
+    $ix++
+    $smtp = "$($m.PrimarySmtpAddress)"
+    $exp = $null; $cexp = $null
+    if ($m.Type -eq 'DL') {
+        $exp  = $dlOn | Where-Object { "$($_.PrimarySmtpAddress)" -ieq $smtp -and -not "$($_.Error)" } | Select-Object -First 1
+        $cexp = $dlCl | Where-Object { "$($_.PrimarySmtpAddress)" -ieq $smtp -and -not "$($_.Error)" } | Select-Object -First 1
+    }
+    # The on-premises ExchangeGuid is often all zeros on a remote mailbox;
+    # the Step 2 (cloud) export has the real one.
+    $xg = "$($m.ExchangeGuid)"
+    if ($m.Type -eq 'SMB' -and ($xg -eq '' -or $xg -match '^0+-0+-0+-0+-0+$')) {
+        $c = $smbCl | Where-Object { "$($_.PrimarySmtpAddress)" -ieq $smtp -and -not "$($_.Error)" } | Select-Object -First 1
+        if ($c -and "$($c.ExchangeGuid)") { $xg = "$($c.ExchangeGuid)" }
+    }
+    $plan += [PSCustomObject]@{ Ix = $ix; Type = "$($m.Type)"; Name = "$($m.Name)"; PrimarySmtpAddress = $smtp; ExchangeGuid = $xg; Export = $exp; CloudExport = $cexp }
+}
+
+Show-RestoreForm -MovedFile $movedFile -Plan $plan

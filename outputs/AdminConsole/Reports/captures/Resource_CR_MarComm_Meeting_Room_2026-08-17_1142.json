@@ -1,0 +1,95 @@
+﻿{
+    "CapturedAt":  "2026-08-17T11:42:35",
+    "SourceIdentity":  "MarCommMtgRm@ExpressPros.com",
+    "SourceDisplayName":  "CR MarComm Meeting Room",
+    "RecipientTypeDetails":  "RoomMailbox",
+    "ResourceCapacity":  null,
+    "HiddenFromGAL":  false,
+    "CustomAttributes":  {
+                             "CustomAttribute3":  "CN=MarComm Meeting Room,OU=Resource Mailbox,OU=Accounts,DC=expresspersonnel,DC=com"
+                         },
+    "CalendarProcessing":  {
+                               "AutomateProcessing":  "AutoAccept",
+                               "AllowConflicts":  false,
+                               "BookingWindowInDays":  180,
+                               "MaximumDurationInMinutes":  1440,
+                               "MinimumDurationInMinutes":  0,
+                               "AllowRecurringMeetings":  true,
+                               "EnforceSchedulingHorizon":  true,
+                               "ScheduleOnlyDuringWorkHours":  false,
+                               "ConflictPercentageAllowed":  0,
+                               "MaximumConflictInstances":  0,
+                               "ForwardRequestsToDelegates":  true,
+                               "DeleteAttachments":  true,
+                               "DeleteComments":  true,
+                               "RemovePrivateProperty":  true,
+                               "DeleteSubject":  true,
+                               "AddOrganizerToSubject":  true,
+                               "DeleteNonCalendarItems":  true,
+                               "TentativePendingApproval":  true,
+                               "EnableResponseDetails":  true,
+                               "OrganizerInfo":  true,
+                               "ResourceDelegates":  [
+
+                                                     ],
+                               "RequestOutOfPolicy":  [
+
+                                                      ],
+                               "AllRequestOutOfPolicy":  false,
+                               "BookInPolicy":  [
+
+                                                ],
+                               "AllBookInPolicy":  true,
+                               "RequestInPolicy":  [
+
+                                                   ],
+                               "AllRequestInPolicy":  false,
+                               "AddAdditionalResponse":  false,
+                               "AdditionalResponse":  null,
+                               "RemoveOldMeetingMessages":  true,
+                               "AddNewRequestsTentatively":  true,
+                               "ProcessExternalMeetingMessages":  false,
+                               "RemoveForwardedMeetingNotifications":  false,
+                               "EnforceCapacity":  false
+                           },
+    "Place":  {
+                  "Building":  null,
+                  "Capacity":  null,
+                  "Floor":  null,
+                  "FloorLabel":  null,
+                  "Label":  "",
+                  "Tags":  [
+
+                           ],
+                  "AudioDeviceName":  null,
+                  "VideoDeviceName":  null,
+                  "DisplayDeviceName":  null,
+                  "IsWheelChairAccessible":  false,
+                  "MTREnabled":  false,
+                  "Street":  "9701 Boardwalkd Blvd",
+                  "City":  "Oklahoma City",
+                  "State":  "Oklahoma",
+                  "PostalCode":  "73162",
+                  "CountryOrRegion":  "United States",
+                  "Phone":  null,
+                  "GeoCoordinates":  null
+              },
+    "CalendarPermissions":  [
+
+                            ],
+    "Regional":  {
+
+                 },
+    "RoomLists":  [
+
+                  ],
+    "OnPremOU":  "OU=Resource Mailbox,OU=Accounts,DC=expresspersonnel,DC=com",
+    "OnPrem":  {
+                   "l":  "Oklahoma City",
+                   "st":  "Oklahoma",
+                   "postalCode":  "73162",
+                   "streetAddress":  "9701 Boardwalkd Blvd",
+                   "c":  "US",
+                   "physicalDeliveryOfficeName":  "2075 2-East"
+               }
+}

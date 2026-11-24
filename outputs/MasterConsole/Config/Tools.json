@@ -1,0 +1,489 @@
+﻿[
+  {
+    "Name": "Dashboard",
+    "Script": ".\\Dashboard.ps1",
+    "Section": "Admin Tools",
+    "Order": 0,
+    "ObjectTypes": []
+  },
+  {
+    "Order": 1,
+    "Name": "Group Editor",
+    "Script": ".\\GroupEditor.ps1",
+    "ObjectTypes": [
+      "UnifiedGroup",
+      "OnpremGroup"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier3",
+    "NewProcess": false
+  },
+  {
+    "Order": 2,
+    "Name": "Mailbox Health",
+    "Script": ".\\MailboxHealth.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier1",
+    "NewProcess": false
+  },
+  {
+    "Order": 3,
+    "Name": "Message Trace",
+    "Script": ".\\MessageTrace.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier1",
+    "NewProcess": false
+  },
+  {
+    "Order": 4,
+    "Name": "Header Analyzer",
+    "Script": ".\\headeranalyzer.ps1",
+    "ObjectTypes": [],
+    "Section": "Admin Tools",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 5,
+    "Name": "Inbox Rules",
+    "Script": ".\\InboxRules.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier1",
+    "NewProcess": false
+  },
+  {
+    "Order": 6,
+    "Name": "Calendar Permissions",
+    "Script": ".\\CalendarPermissions.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier2",
+    "NewProcess": false
+  },
+  {
+    "Order": 7,
+    "Name": "Out of Office",
+    "Script": ".\\OOFEditor.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier2",
+    "NewProcess": false
+  },
+  {
+    "Order": 8,
+    "Name": "DL Memberships",
+    "Script": ".\\DLMemberships.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier2",
+    "NewProcess": false
+  },
+  {
+    "Order": 9,
+    "Name": "UnifiedGroup Editor",
+    "Script": ".\\unifiedgroup.ps1",
+    "ObjectTypes": [
+      "UnifiedGroup"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier1",
+    "NewProcess": false
+  },
+  {
+    "Order": 10,
+    "Name": "Mailbox Permissions",
+    "Script": ".\\MailboxPermissions.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier2",
+    "NewProcess": false
+  },
+  {
+    "Order": 11,
+    "Name": "Mail Attributes (Rename)",
+    "Script": ".\\MailAttributes.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier3",
+    "NewProcess": false
+  },
+  {
+    "Order": 12,
+    "Name": "All Attributes",
+    "Script": ".\\AllAttributes.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier3",
+    "NewProcess": false
+  },
+  {
+    "Order": 13,
+    "Name": "Audit UserMB",
+    "Script": ".\\audituser.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier2",
+    "NewProcess": false
+  },
+  {
+    "Order": 14,
+    "Name": "Audit SMB",
+    "Script": ".\\auditSMB.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier2",
+    "NewProcess": false
+  },
+  {
+    "Order": 15,
+    "Name": "Term Requests",
+    "Script": ".\\disable-user.ps1",
+    "ObjectTypes": [],
+    "Section": "Daily Scripts",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 16,
+    "Name": "Term Requests (Old)",
+    "Script": ".\\disable-intake.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Daily Scripts",
+    "Tier": "Tier1",
+    "NewProcess": false
+  },
+  {
+    "Order": 17,
+    "Name": "New User",
+    "Script": ".\\newuser.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Daily Scripts",
+    "Tier": "Tier1",
+    "NewProcess": false
+  },
+  {
+    "Order": 18,
+    "Name": "Returning User",
+    "Script": ".\\Notdeadyet.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Daily Scripts",
+    "Tier": "Tier1",
+    "NewProcess": false
+  },
+  {
+    "Order": 19,
+    "Name": "Console",
+    "Script": ".\\console.ps1",
+    "ObjectTypes": [
+      "Mailbox"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier3",
+    "NewProcess": false
+  },
+  {
+    "Order": 20,
+    "Name": "Mailbox / Onedrive Perms",
+    "Script": ".\\mailboxonedriveaccess.ps1",
+    "ObjectTypes": [],
+    "Section": "Daily Scripts",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 21,
+    "Name": "ServiceNow Queue",
+    "Script": ".\\ServiceNowQueue.ps1",
+    "ObjectTypes": [
+      "Mailbox",
+      "UnifiedGroup",
+      "OnpremGroup"
+    ],
+    "Section": "Admin Tools",
+    "Tier": "Tier1",
+    "NewProcess": false
+  },
+  {
+    "Order": 22,
+    "Name": "DL Permissions",
+    "Script": ".\\dl_sendtoas.ps1",
+    "ObjectTypes": [],
+    "Section": "Admin Tools",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 23,
+    "Name": "ResourceDuplicator",
+    "Script": "./resourceduplicator.ps1",
+    "ObjectTypes": [],
+    "Section": "Admin Tools",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 24,
+    "Name": "1-Onprem-Export",
+    "Script": ".\\Projects\\DLtoSharedMbx\\1-onprem-Export.ps1",
+    "ObjectTypes": [],
+    "Section": "DL to Shared Mbx",
+    "Tier": "",
+    "NewProcess": true
+  },
+  {
+    "Order": 25,
+    "Name": "2-Onprem-Decomm",
+    "Script": ".\\Projects\\DLtoSharedMbx\\2-onprem-decomm.ps1",
+    "ObjectTypes": [],
+    "Section": "DL to Shared Mbx",
+    "Tier": "",
+    "NewProcess": true
+  },
+  {
+    "Order": 26,
+    "Name": "3-Cloud-CheckSync",
+    "Script": ".\\Projects\\DLtoSharedMbx\\3-cloud-checksync.ps1",
+    "ObjectTypes": [],
+    "Section": "DL to Shared Mbx",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 27,
+    "Name": "4-Cloud-Create",
+    "Script": ".\\Projects\\DLtoSharedMbx\\4-cloud-create.ps1",
+    "ObjectTypes": [],
+    "Section": "DL to Shared Mbx",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 28,
+    "Name": "Protocols",
+    "Script": ".\\Protocols.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 29,
+    "Name": "Disabled/Licensed",
+    "Script": ".\\disabledlicensed.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 30,
+    "Name": "MB w No activity",
+    "Script": ".\\staleaccounts.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 31,
+    "Name": "DL Inventory",
+    "Script": ".\\dlinventory.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 32,
+    "Name": "External Forwarding",
+    "Script": ".\\externalForwarding.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 33,
+    "Name": "Permissions Audit",
+    "Script": "./permissionsaudit.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 34,
+    "Name": "Orphaned OneDrive",
+    "Script": "./orphanedOneDrive.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 35,
+    "Name": "External Sharing",
+    "Script": "./externalSharing.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 36,
+    "Name": "Ownerless Groups",
+    "Script": "./ownerlessgroups.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 37,
+    "Name": "Report Browser",
+    "Script": "./reportBrowser.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 38,
+    "Name": "M365 Reports",
+    "Script": ".\\m365Reports.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 39,
+    "Name": "Log Viewer",
+    "Script": ".\\logviewer.ps1",
+    "ObjectTypes": [],
+    "Section": "Reporting",
+    "Tier": "tier3",
+    "NewProcess": false
+  },
+  {
+    "Order": 40,
+    "Name": "Activate",
+    "Script": ".\\activate.ps1",
+    "ObjectTypes": [],
+    "Section": "Connect",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 41,
+    "Name": "OnPrem",
+    "Script": ".\\connect-exse.ps1",
+    "ObjectTypes": [],
+    "Section": "Connect",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 42,
+    "Name": "ExO",
+    "Script": ".\\connect-exo.ps1",
+    "ObjectTypes": [],
+    "Section": "Connect",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 43,
+    "Name": "SPO",
+    "Script": ".\\connect-spo.ps1",
+    "ObjectTypes": [],
+    "Section": "Connect",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 44,
+    "Name": "Cert Check",
+    "Script": ".\\certificateexpiry.ps1",
+    "ObjectTypes": [],
+    "Section": "Admin Tools",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 45,
+    "Name": "DL Management",
+    "Script": ".\\setdlmembership.ps1",
+    "ObjectTypes": [],
+    "Section": "Daily Scripts",
+    "Tier": "",
+    "NewProcess": true
+  },
+  {
+    "Order": 46,
+    "Name": "Tester",
+    "Script": ".\\test-toolkit.ps1",
+    "ObjectTypes": [],
+    "Section": "Admin Tools",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 47,
+    "Name": "DL Owner Groups",
+    "Script": ".\\manageownergroups.ps1",
+    "ObjectTypes": [],
+    "Section": "Daily Scripts",
+    "Tier": "",
+    "NewProcess": true
+  },
+  {
+    "Order": 48,
+    "Name": "Quick Links",
+    "Script": ".\\quicklaunch.ps1",
+    "ObjectTypes": [],
+    "Section": "Daily Scripts",
+    "Tier": "",
+    "NewProcess": false
+  },
+  {
+    "Order": 49,
+    "Name": "Edit DL-Input.csv",
+    "Script": ".\\Projects\\DLtoSharedMbx\\dl-input.ps1",
+    "ObjectTypes": [],
+    "Section": "DL to Shared Mbx",
+    "Tier": "",
+    "NewProcess": false
+  }
+]

@@ -1,0 +1,11 @@
+﻿{
+  "MailDomain": "",
+  "ReportsPath": "",
+  "LogPath": "",
+  "BrowserProfiles": {
+    "Admin": "",
+    "Standard": ""
+  },
+  "PimTimerEnabled": false,
+  "PimDurationHours": 4
+}
